@@ -109,7 +109,7 @@ for index, level in ipairs(Levels) do
         guardian.Name = "HumanoidRootPart"
         guardian.Size = Vector3.new(4, 5, 3)
         guardian.Anchored = false
-        guardian.Color = level.BossKind == "Cat" and Color3.fromRGB(155, 155, 165) or Color3.fromRGB(112, 68, 38)
+        guardian.Color = (level.BossKind == "Cat" or level.BossKind == "Wolf") and Color3.fromRGB(155, 155, 165) or Color3.fromRGB(112, 68, 38)
         bear.PrimaryPart = guardian
         local humanoid = Instance.new("Humanoid")
         humanoid.RequiresNeck = false
@@ -157,6 +157,14 @@ for index, level in ipairs(Levels) do
                 feature("Whiskers", Vector3.new(2, 0.1, 0.1), Vector3.new(x, 2.5, -2.25), Color3.new(1, 1, 1))
             end
         end
+        if level.BossKind == "Wolf" then
+            bear.LeftEar.Size = Vector3.new(1.2, 2.5, 1.2)
+            bear.RightEar.Size = Vector3.new(1.2, 2.5, 1.2)
+            bear.Muzzle:Destroy()
+            feature("WolfSnout", Vector3.new(2, 1.5, 2.5), Vector3.new(0, 2.5, -2), Color3.fromRGB(210, 210, 215))
+            feature("Nose", Vector3.new(1, 0.6, 0.5), Vector3.new(0, 2.7, -3.4), Color3.fromRGB(25, 25, 30))
+            feature("BushyTail", Vector3.new(1.5, 1.5, 5), Vector3.new(0, -1, 3), brown)
+        end
         guardian:SetNetworkOwner(nil)
         task.spawn(function()
             while bear.Parent do
@@ -191,7 +199,7 @@ for index, level in ipairs(Levels) do
             end
         end)
         local prompt = Instance.new("ProximityPrompt")
-        prompt.ActionText = "Strike " .. (level.BossKind == "Cat" and "Cally" or "Bruno")
+        prompt.ActionText = "Strike " .. (string.match(bear.Name, "^%S+") or bear.Name)
         prompt.ObjectText = bear.Name .. " — 3 strikes"
         prompt.HoldDuration = 0.6
         prompt.MaxActivationDistance = 11
