@@ -4,10 +4,10 @@ return {
     SilverTreadmillProductId = 3720262741,
     SilverTreadmillPrice = 15,
     SilverMultiplier = 2.5,
-    GoldTreadmillProductId = 0,
+    GoldTreadmillProductId = 3720265337,
     GoldTreadmillPrice = 30,
     GoldMultiplier = 5,
-    GodTreadmillProductId = 0,
+    GodTreadmillProductId = 3720265626,
     GodTreadmillPrice = 50,
     GodMultiplier = 99,
 }

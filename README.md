@@ -45,10 +45,10 @@ Each level entrance has a training lobby with free, silver, gold, and god treadm
 | Treadmill | Speed multiplier | Price | Developer Product ID |
 | --- | --- | --- | --- |
 | Silver | 2.5x | 15 Robux | 3720262741 |
-| Gold | 5x | 30 Robux | Pending |
-| God | 99x | 50 Robux | Pending |
+| Gold | 5x | 30 Robux | 3720265337 |
+| God | 99x | 50 Robux | 3720265626 |
 
-Create the Gold and God Developer Products for this experience in Creator Dashboard at their listed prices. Put their numeric IDs in `GoldTreadmillProductId` and `GodTreadmillProductId` in `src/server/ShopConfig.lua`. Zero disables only that tier's purchase prompt. Silver retains its configured ID and existing saved ownership.
+All three Developer Product IDs are configured in `src/server/ShopConfig.lua`. Ensure each belongs to this experience and has the listed price in Creator Dashboard. Zero disables only that tier's purchase prompt. Silver retains its configured ID and existing saved ownership.
 
 Roblox controls checkout prices. The server checks each configured product's price before enabling its prompts. Keep the prices fixed as listed; disable regional pricing and price optimization for these fixed-price products. The configured products must belong to this experience.
 

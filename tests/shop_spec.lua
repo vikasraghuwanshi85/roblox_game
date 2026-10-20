@@ -15,6 +15,9 @@ local function fixture(options)
     if not options.actualIds then
         config.GoldTreadmillProductId, config.GodTreadmillProductId = 101, 102
     end
+    if options.disableNewProducts then
+        config.GoldTreadmillProductId, config.GodTreadmillProductId = 0, 0
+    end
     local players = {PlayerRemoving = signal(), users = {}}
     function players:GetPlayerByUserId(id) return self.users[id] end
     local store = {profiles = {}, failWrite = false, failRead = false}
@@ -30,7 +33,7 @@ local function fixture(options)
     end
     local market = {PromptProductPurchaseFinished = signal(), prompts = {}}
     function market:GetProductInfo(id)
-        local prices = {[config.SilverTreadmillProductId] = 15, [101] = 30, [102] = 50}
+        local prices = {[config.SilverTreadmillProductId] = 15, [config.GoldTreadmillProductId] = 30, [config.GodTreadmillProductId] = 50}
         return {PriceInRobux = options.wrongPrice and 999 or prices[id]}
     end
     function market:PromptProductPurchase(player, id)
@@ -130,10 +133,21 @@ local tests = {
         f.shop.load(p); assert(f.shop.multiplier(p) == 99)
     end},
     {"unconfigured gold and god products remain disabled", function()
-        local f = fixture({actualIds = true}); local p = f.player(10); f.shop.load(p)
-        if f.config.GoldTreadmillProductId == 0 then f.shop.prompt(p, "Gold"); assert(#f.market.prompts == 0) end
-        if f.config.GodTreadmillProductId == 0 then f.shop.prompt(p, "God"); assert(#f.market.prompts == 0) end
+        local f = fixture({disableNewProducts = true}); local p = f.player(10); f.shop.load(p)
+        f.shop.prompt(p, "Gold"); f.shop.prompt(p, "God")
+        assert(#f.market.prompts == 0)
         f.shop.prompt(p, "Silver"); assert(#f.market.prompts == 1)
+    end},
+    {"configured gold and god products route prompts and receipt grants", function()
+        local f = fixture({actualIds = true}); local p = f.player(11); f.shop.load(p)
+        for _, key in ipairs({"Gold", "God"}) do
+            local id = f.config[key .. "TreadmillProductId"]
+            f.shop.prompt(p, key)
+            assert(f.market.prompts[#f.market.prompts][2] == id)
+            assert(f.receipt(11, id) == "granted")
+            assert(f.shop.multiplier(p) == f.config[key .. "Multiplier"])
+        end
+        assert(f.store.profiles["11"].Gold and f.store.profiles["11"].God)
     end},
 }
 for _, test in ipairs(tests) do
