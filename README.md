@@ -5,7 +5,7 @@ A Roblox maze adventure with seven deterministic, fully connected mazes.
 - Level 1: The Forgotten Garden. Find the green exit; no boss.
 - Level 2: Bruno's Labyrinth. Brown walls and immortal Bruno the Bear, speed **1,000 studs per second**. Reach the green exit to advance.
 - Level 3: Cally's Green Maze. Green walls and immortal Cally the Cat, speed **2,500 studs per second**. Reach the green exit to advance.
-- Level 4: Wiskey's Wolf Maze. Blue walls and immortal Wiskey the Wolf, speed **90 studs per second**. Reach the green exit to advance.
+- Level 4: Wiskey's Wolf Maze. Blue walls and immortal Wiskey the Wolf, speed **10,000 studs per second**. Reach the green exit to advance.
 - Level 5: Randy's Red Maze. Red walls and immortal Randy the Rat, speed **150 studs per second**. Reach the green exit to advance.
 - Level 6: Leo's Golden Maze. Yellow walls and immortal Leo the Lion, speed **320 studs per second**. Reach the green exit to advance.
 - Level 7: Han's Horse Maze. Brown walls and immortal Han the Horse, speed **600 studs per second**. Reach the green exit to win.
