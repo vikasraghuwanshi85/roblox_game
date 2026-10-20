@@ -8,7 +8,7 @@ A Roblox maze adventure with seven deterministic, fully connected mazes.
 - Level 4: Wiskey's Wolf Maze. Blue walls and immortal Wiskey the Wolf, speed **10,000 studs per second**. Reach the green exit to advance.
 - Level 5: Randy's Red Maze. Red walls and immortal Randy the Rat, speed **50,000 studs per second**. Reach the green exit to advance.
 - Level 6: Leo's Golden Maze. Yellow walls and immortal Leo the Lion, speed **1,000,000 studs per second**. Reach the green exit to advance.
-- Level 7: Han's Horse Maze. Brown walls and immortal Han the Horse, speed **600 studs per second**. Reach the green exit to win.
+- Level 7: Han's Horse Maze. Brown walls and immortal Han the Horse, speed **10,000,000 studs per second**. Reach the green exit to win.
 - Speed training: a treadmill at every entrance adds **16 studs/sec** per two-second interaction, starting at 16 and capped at 640. Hold E nearby (or use the touch/gamepad prompt). Upgrades survive death and level changes during the session; leaving resets speed. The HUD shows your current speed.
 - Progress is independent for each player. Death returns you to your current entrance. Ordinary progress resets when leaving; purchased skip destinations are restored on rejoining.
 
