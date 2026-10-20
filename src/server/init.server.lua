@@ -190,6 +190,16 @@ for index, level in ipairs(Levels) do
             feature("LionTail", Vector3.new(0.6, 0.6, 4), Vector3.new(0, -1, 3), brown)
             feature("TailTuft", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, -1, 5), maneColor)
         end
+        if level.BossKind == "Horse" then
+            bear.LeftEar.Size = Vector3.new(0.8, 2.5, 0.8)
+            bear.RightEar.Size = Vector3.new(0.8, 2.5, 0.8)
+            bear.Muzzle:Destroy()
+            feature("HorseMuzzle", Vector3.new(2.5, 2, 3), Vector3.new(0, 2.2, -2.2), Color3.fromRGB(165, 115, 80))
+            feature("LeftNostril", Vector3.new(0.4, 0.5, 0.2), Vector3.new(-0.7, 2.2, -3.75), Color3.fromRGB(30, 22, 18))
+            feature("RightNostril", Vector3.new(0.4, 0.5, 0.2), Vector3.new(0.7, 2.2, -3.75), Color3.fromRGB(30, 22, 18))
+            feature("Mane", Vector3.new(1.2, 5, 1), Vector3.new(0, 1.5, 1.6), Color3.fromRGB(35, 25, 20))
+            feature("HorseTail", Vector3.new(1, 3, 1), Vector3.new(0, -1, 2), Color3.fromRGB(35, 25, 20))
+        end
         guardian:SetNetworkOwner(nil)
         task.spawn(function()
             while bear.Parent do
