@@ -1,7 +1,7 @@
 return {
-    -- Create a Developer Product priced at 15 Robux in this experience,
-    -- then replace 0 with its numeric Product ID. Zero disables purchases.
-    SilverTreadmillProductId = 0,
+    -- This Developer Product must belong to the experience and cost 15 Robux.
+    -- Setting the ID to zero disables purchases.
+    SilverTreadmillProductId = 3720262741,
     SilverTreadmillPrice = 15,
     SilverMultiplier = 2.5,
 }
