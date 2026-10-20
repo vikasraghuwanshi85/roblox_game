@@ -59,7 +59,7 @@ local function setStatus(player)
         player:SetAttribute("MazeStatus", "Victory! You escaped every maze. Rejoin to play again.")
     else
         local level = Levels[state.level]
-        local hint = level.Boss and (state.bossDefeated and "Guardian defeated! Find the green exit." or "Bruno the Bear runs at 29 studs/sec! Hold E nearby three times to defeat him!") or "No boss. Find the green exit!"
+        local hint = level.Boss and (state.bossDefeated and "Guardian defeated! Find the green exit." or (level.BossName .. " runs at " .. level.BossSpeed .. " studs/sec! Hold E nearby three times to win!")) or "No boss. Find the green exit!"
         player:SetAttribute("MazeStatus", "Level " .. state.level .. " — " .. level.Name .. "\n" .. hint)
     end
 end
@@ -77,7 +77,7 @@ for index, level in ipairs(Levels) do
     local offset = Vector3.new((index - 1) * 500, 0, 0)
     local function pos(x, z, y) return offset + Vector3.new((x - 1) * CELL, y or 0, (z - 1) * CELL) end
     local size, cells = level.Size, carve(level.Size, level.Seed)
-    local wallColor = Color3.fromRGB(120, 78, 45)
+    local wallColor = level.WallColor or Color3.fromRGB(120, 78, 45)
     local function wall(p, s) part(folder, "Wall", s, p, wallColor) end
     part(folder, "Floor", Vector3.new(size * CELL, 2, size * CELL), pos((size + 1) / 2, (size + 1) / 2, -1), Color3.fromRGB(32, 45, 49))
     for x = 1, size do
@@ -109,7 +109,7 @@ for index, level in ipairs(Levels) do
         guardian.Name = "HumanoidRootPart"
         guardian.Size = Vector3.new(4, 5, 3)
         guardian.Anchored = false
-        guardian.Color = Color3.fromRGB(112, 68, 38)
+        guardian.Color = level.BossKind == "Cat" and Color3.fromRGB(155, 155, 165) or Color3.fromRGB(112, 68, 38)
         bear.PrimaryPart = guardian
         local humanoid = Instance.new("Humanoid")
         humanoid.RequiresNeck = false
@@ -126,13 +126,36 @@ for index, level in ipairs(Levels) do
             weld.Part0, weld.Part1, weld.Parent = guardian, p, p
             return p
         end
-        local brown = Color3.fromRGB(112, 68, 38)
+        local brown = guardian.Color
         feature("Head", Vector3.new(4, 3, 3), Vector3.new(0, 3, 0), brown)
         feature("LeftEar", Vector3.new(1.4, 1.4, 1), Vector3.new(-1.4, 4.6, 0), brown)
         feature("RightEar", Vector3.new(1.4, 1.4, 1), Vector3.new(1.4, 4.6, 0), brown)
         feature("Muzzle", Vector3.new(2.5, 1.2, 1), Vector3.new(0, 2.5, -1.7), Color3.fromRGB(185, 139, 91))
         for _, x in ipairs({-0.9, 0.9}) do
             feature("Eye", Vector3.new(0.4, 0.4, 0.3), Vector3.new(x, 3.4, -1.6), Color3.new(0, 0, 0))
+        end
+        if level.BossKind == "Cat" then
+            -- Upright pointed ears, a pink nose, whiskers, and a long tail.
+            for _, x in ipairs({-1.4, 1.4}) do
+                local wedge = Instance.new("WedgePart")
+                wedge.Name = "CatEar"
+                wedge.Size = Vector3.new(1.4, 2, 1.2)
+                wedge.CFrame = guardian.CFrame * CFrame.new(x, 4.7, 0)
+                wedge.Color = brown
+                wedge.CanCollide = false
+                wedge.Massless = true
+                wedge.Parent = bear
+                local weld = Instance.new("WeldConstraint")
+                weld.Part0, weld.Part1, weld.Parent = guardian, wedge, wedge
+            end
+            bear.LeftEar:Destroy()
+            bear.RightEar:Destroy()
+            bear.Muzzle.Color = Color3.fromRGB(210, 210, 215)
+            feature("Nose", Vector3.new(0.6, 0.4, 0.4), Vector3.new(0, 2.8, -2.3), Color3.fromRGB(245, 140, 170))
+            feature("Tail", Vector3.new(0.7, 0.7, 5), Vector3.new(0, -1, 3), brown)
+            for _, x in ipairs({-1.6, 1.6}) do
+                feature("Whiskers", Vector3.new(2, 0.1, 0.1), Vector3.new(x, 2.5, -2.25), Color3.new(1, 1, 1))
+            end
         end
         guardian:SetNetworkOwner(nil)
         task.spawn(function()
@@ -168,8 +191,8 @@ for index, level in ipairs(Levels) do
             end
         end)
         local prompt = Instance.new("ProximityPrompt")
-        prompt.ActionText = "Strike Bruno"
-        prompt.ObjectText = "Bruno the Bear — 3 strikes"
+        prompt.ActionText = "Strike " .. (level.BossKind == "Cat" and "Cally" or "Bruno")
+        prompt.ObjectText = bear.Name .. " — 3 strikes"
         prompt.HoldDuration = 0.6
         prompt.MaxActivationDistance = 11
         prompt.RequiresLineOfSight = true

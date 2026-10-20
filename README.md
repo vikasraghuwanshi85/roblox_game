@@ -1,9 +1,10 @@
 # Maze Quest
 
-A Roblox maze adventure with two deterministic, fully connected mazes.
+A Roblox maze adventure with three deterministic, fully connected mazes.
 
 - Level 1: The Forgotten Garden. Find the green exit; no boss.
 - Level 2: Bruno's Labyrinth. Bruno the Bear chases players at **29 studs per second**. Strike Bruno three times using its proximity prompt, then reach the green exit. Yellow signals an incoming damage pulse: step back or take cover.
+- Level 3: Cally's Green Maze. Green walls and Cally the Cat, who chases players at **45 studs per second**. Defeat Cally with three strikes, then find the exit to win.
 - Progress is independent for each player. Death returns you to your current level's entrance; leaving resets progress. Boss completion is per player.
 
 Level 1 has no boss. Level 2 features Bruno the Bear with a configured WalkSpeed of 29 studs per second; walls and turns can reduce actual travel speed.
@@ -22,7 +23,7 @@ Alternatively, with Rojo 7 installed, run `rojo build default.project.json -o bu
 
 ## Customize
 
-Edit `src/server/Levels.lua` to change maze names, sizes, deterministic random seeds, and boss presence. Add entries to extend progression. Keep the first level's `Boss = false`. Sizes should be integers between 3 and 25; levels are spaced 500 studs apart.
+Edit `src/server/Levels.lua` to change maze names, sizes, deterministic random seeds, and boss presence. Add entries to extend progression. Use `WallColor` for each level's wall color and `BossSpeed` for its boss speed. Keep the first level's `Boss = false`. Sizes should be integers between 3 and 25; levels are spaced 500 studs apart.
 
 ## Validation
 
