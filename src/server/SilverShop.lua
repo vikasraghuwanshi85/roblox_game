@@ -3,12 +3,16 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local Config = require(script.Parent.ShopConfig)
+local TrailCatalog = require(game:GetService("ReplicatedStorage"):WaitForChild("TrailCatalog"))
 local store = DataStoreService:GetDataStore("MazeQuestSilverV1")
 local Shop = {}
 local ready, enabled, pending, usingSkip, revisions = {}, {}, {}, {}, {}
 local offers, treadmills = {}, {}
 local byKey, byProduct = {}, {}
-local changed, lastLevel
+local changed, lastLevel, rewards
+local buyingTrail = {}
+local trailsByKey = {}
+for _, trail in ipairs(TrailCatalog) do trailsByKey[trail.Key] = trail end
 local function add(offer)
     table.insert(offers, offer)
     byKey[offer.Key] = offer
@@ -56,6 +60,13 @@ local function merge(player, data)
     if data.MillionSpeed then player:SetAttribute("MillionSpeedOwned", true) end
     player:SetAttribute("SkipCredits", data.SkipCredits or 0)
     player:SetAttribute("PurchasedCheckpoint", data.PaidCheckpoint or 1)
+    player:SetAttribute("Wins", data.Wins or 0)
+    player:SetAttribute("UnlockedLevel", math.min(lastLevel, math.max(data.UnlockedLevel or 1, data.PaidCheckpoint or 1)))
+    player:SetAttribute("SkipUses", data.SkipUses or 0)
+    player:SetAttribute("EquippedTrail", data.EquippedTrail or "")
+    for _, trail in ipairs(TrailCatalog) do
+        player:SetAttribute("OwnsTrail_" .. trail.Key, data.Trails and data.Trails[trail.Key] or false)
+    end
     ready[player] = true
     player:SetAttribute("ShopReady", true)
     changed(player)
@@ -65,8 +76,10 @@ end
 -- this write restores the paid destination on the next join instead of losing it.
 function Shop.useSkip(player, purchaseId)
     local level = player:GetAttribute("CurrentMazeLevel")
-    if not ready[player] or usingSkip[player] or not level or level > lastLevel then return end
+    if not ready[player] or usingSkip[player] or player:GetAttribute("StageTransition") or not level or level < 1 or level > lastLevel then return end
+    local entryId = player:GetAttribute("StageEntryId")
     usingSkip[player] = true
+    player:SetAttribute("SkipTransition", true)
     local ok, data = pcall(function()
         return store:UpdateAsync(tostring(player.UserId), function(previous)
             previous = previous or {}
@@ -77,10 +90,17 @@ function Shop.useSkip(player, purchaseId)
                 end
             end
             if selected and previous.SkipReceipts and previous.SkipReceipts[selected] == "pending" and (previous.SkipCredits or 0) > 0 then
-                local checkpoint = math.max(level, previous.PaidCheckpoint or 1)
+                local checkpoint = level
                 if checkpoint <= lastLevel then
                     previous.SkipCredits = previous.SkipCredits - 1
-                    previous.PaidCheckpoint = checkpoint + 1
+                    previous.PaidCheckpoint = math.max(previous.PaidCheckpoint or 1, checkpoint + 1)
+                    previous.UnlockedLevel = math.max(previous.UnlockedLevel or 1, math.min(checkpoint + 1, lastLevel))
+                    previous.SkipUses = (previous.SkipUses or 0) + 1
+                    previous.StageRewards = previous.StageRewards or {}
+                    if not entryId or not previous.StageRewards[entryId] then
+                        previous.Wins = (previous.Wins or 0) + (rewards[checkpoint] or 0)
+                        if entryId then previous.StageRewards[entryId] = checkpoint end
+                    end
                     previous.SkipReceipts[selected] = checkpoint + 1
                     previous.Revision = (previous.Revision or 0) + 1
                 end
@@ -89,12 +109,13 @@ function Shop.useSkip(player, purchaseId)
         end)
     end)
     usingSkip[player] = nil
+    player:SetAttribute("SkipTransition", false)
     if ok then merge(player, data)
     else player:SetAttribute("ShopMessage", "Skip is saved. Please try using your credit again.") end
 end
 
-function Shop.start(onChanged, levelCount, onCatalogChanged)
-    changed, lastLevel = onChanged, levelCount
+function Shop.start(onChanged, levelCount, onCatalogChanged, stageRewards)
+    changed, lastLevel, rewards = onChanged, levelCount, stageRewards or {}
     MarketplaceService.ProcessReceipt = function(receipt)
         local offer = byProduct[receipt.ProductId]
         if not offer then return Enum.ProductPurchaseDecision.NotProcessedYet end
@@ -168,6 +189,7 @@ end
 function Shop.prompt(player, key)
     local offer = byKey[key]
     if not offer then return end
+    player:SetAttribute("EconomyMessage", nil)
     if offer.Kind == "Treadmill" and Shop.multiplier(player) >= offer.Multiplier then
         player:SetAttribute("ShopMessage", "Your active boost is already equal to or higher than this treadmill.")
         return
@@ -178,7 +200,7 @@ function Shop.prompt(player, key)
     end
     if key == "SkipLevel" then
         local level = player:GetAttribute("CurrentMazeLevel")
-        if not level or level > lastLevel then return end
+        if not level or level < 1 or level > lastLevel or player:GetAttribute("StageTransition") then return end
         if (player:GetAttribute("SkipCredits") or 0) > 0 then Shop.useSkip(player); return end
     end
     if not enabled[key] or not ready[player] then
@@ -195,7 +217,74 @@ function Shop.prompt(player, key)
     end
 end
 
+-- Called only by the server after validating a stage's reward pad. Entry IDs
+-- come from the server; a retried save cannot pay for the same completion twice.
+function Shop.completeStage(player, entryId, stage)
+    if not ready[player] or type(entryId) ~= "string" or entryId == "" then return false end
+    if type(stage) ~= "number" or stage % 1 ~= 0 or stage < 1 or stage > lastLevel then return false end
+    if player:GetAttribute("CurrentMazeLevel") ~= stage then return false end
+    local ok, data = pcall(function()
+        return store:UpdateAsync(tostring(player.UserId), function(previous)
+            previous = previous or {}
+            previous.StageRewards = previous.StageRewards or {}
+            if not previous.StageRewards[entryId] then
+                previous.StageRewards[entryId] = stage
+                previous.Wins = (previous.Wins or 0) + (rewards[stage] or 0)
+                previous.UnlockedLevel = math.max(previous.UnlockedLevel or 1, math.min(stage + 1, lastLevel))
+                previous.Revision = (previous.Revision or 0) + 1
+            end
+            return previous
+        end)
+    end)
+    if not ok or not data or not data.StageRewards or data.StageRewards[entryId] ~= stage then
+        player:SetAttribute("EconomyMessage", "Reward save unavailable. Step off the button and try again.")
+        return false
+    end
+    merge(player, data)
+    player:SetAttribute("EconomyMessage", "+" .. (rewards[stage] or 0) .. " wins for Level " .. stage .. "!")
+    return true
+end
+
+-- The server uses catalog prices and stored balances; clients never submit costs
+-- or currency amounts. Ownership, spending, and equipment commit in one write.
+function Shop.selectTrail(player, key, action)
+    local trail = trailsByKey[key]
+    if not trail or not ready[player] or buyingTrail[player] then return false end
+    if action ~= "Buy" and action ~= "Equip" and action ~= "Unequip" then return false end
+    buyingTrail[player] = true
+    local ok, data = pcall(function()
+        return store:UpdateAsync(tostring(player.UserId), function(previous)
+            previous = previous or {}
+            previous.Trails = previous.Trails or {}
+            if action == "Unequip" then
+                if previous.EquippedTrail == key then previous.EquippedTrail = "" end
+            else
+                if not previous.Trails[key] then
+                    if action ~= "Buy" or (previous.Wins or 0) < trail.Price then return previous end
+                    previous.Wins = previous.Wins - trail.Price
+                    previous.Trails[key] = true
+                end
+                previous.EquippedTrail = key
+            end
+            previous.Revision = (previous.Revision or 0) + 1
+            return previous
+        end)
+    end)
+    buyingTrail[player] = nil
+    if not ok or not data then
+        player:SetAttribute("EconomyMessage", "Trail save unavailable. Please try again.")
+        return false
+    end
+    merge(player, data)
+    if action ~= "Unequip" and not (data.Trails and data.Trails[key]) then
+        player:SetAttribute("EconomyMessage", action == "Buy" and ("You need " .. trail.Price .. " wins for " .. trail.Name .. ".") or "Buy this trail before equipping it.")
+        return false
+    end
+    player:SetAttribute("EconomyMessage", action == "Unequip" and "Trail removed." or (trail.Name .. " equipped!"))
+    return true
+end
+
 Players.PlayerRemoving:Connect(function(player)
-    ready[player], pending[player], usingSkip[player], revisions[player] = nil, nil, nil, nil
+    ready[player], pending[player], usingSkip[player], revisions[player], buyingTrail[player] = nil, nil, nil, nil, nil
 end)
 return Shop

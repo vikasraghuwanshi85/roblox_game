@@ -2,7 +2,22 @@
   "name": "MazeQuest",
   "tree": {
     "$className": "DataModel",
-    "ServerScriptService": {"MazeGame": {"$path": "src/server"}},
-    "StarterPlayer": {"StarterPlayerScripts": {"MazeHUD": {"$path": "src/client"}}}
+    "ServerScriptService": {
+      "MazeGame": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "MazeHUD": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "ReplicatedStorage": {
+      "TrailCatalog": {
+        "$path": "src/shared/TrailCatalog.lua"
+      }
+    }
   }
 }

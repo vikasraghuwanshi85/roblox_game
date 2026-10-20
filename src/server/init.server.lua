@@ -1,6 +1,8 @@
 local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+local TrailCatalog = require(ReplicatedStorage:WaitForChild("TrailCatalog"))
 local Levels = require(script.Levels)
 local SilverShop = require(script.SilverShop)
 local CELL, HEIGHT = 16, 14
@@ -9,12 +11,20 @@ local world = Instance.new("Folder")
 world.Name = "MazeQuest"
 world.Parent = workspace
 local maps, progress, shopRequests = {}, {}, {}
+local LOBBY_CENTER = Vector3.new(-700, 0, 0)
+local LOBBY_SPAWN = LOBBY_CENTER + Vector3.new(0, 4, -6)
+local stageRewards, trailsByKey = {}, {}
+for index, level in ipairs(Levels) do stageRewards[index] = level.WinReward end
+for _, trail in ipairs(TrailCatalog) do trailsByKey[trail.Key] = trail end
 local shopFolder = Instance.new("Folder")
 shopFolder.Name = "MazeShop"
 shopFolder.Parent = ReplicatedStorage
 local purchaseRequest = Instance.new("RemoteEvent")
 purchaseRequest.Name = "PurchaseRequest"
 purchaseRequest.Parent = shopFolder
+local trailRequest = Instance.new("RemoteEvent")
+trailRequest.Name = "TrailRequest"
+trailRequest.Parent = shopFolder
 
 local function part(parent, name, size, position, color)
     local p = Instance.new("Part")
@@ -78,55 +88,92 @@ local function setStatus(player)
     local state = progress[player]
     if not state then return end
     applySpeed(player)
-    player:SetAttribute("CurrentMazeLevel", state.won and #Levels + 1 or state.level)
-    player:SetAttribute("MazeWon", state.won or false)
-    if state.won then
-        player:SetAttribute("MazeStatus", "Victory! You escaped every maze!")
+    player:SetAttribute("CurrentMazeLevel", state.inLobby and 0 or state.level)
+    player:SetAttribute("MazeWon", false)
+    if state.inLobby then
+        player:SetAttribute("MazeStatus", "Lobby — Levels 1–" .. (player:GetAttribute("UnlockedLevel") or 1) .. " unlocked. Step on a stage pad; finish the maze to claim wins and return here.")
     else
         local level = Levels[state.level]
-        local hint = level.Boss and (level.BossName .. " is immortal and chases at " .. level.BossSpeed .. " studs/sec. Find the green exit!") or "No boss. Find the green exit!"
-        player:SetAttribute("MazeStatus", "Level " .. state.level .. " — " .. level.Name .. "\n" .. hint)
+        local hint = level.Boss and (level.BossName .. " is immortal and chases at " .. level.BossSpeed .. " studs/sec.") or "No boss."
+        player:SetAttribute("MazeStatus", "Level " .. state.level .. " — " .. level.Name .. "\n" .. hint .. " Find the green button: " .. level.WinReward .. " wins + return to lobby.")
     end
 end
 
 local function teleport(player)
     local state = progress[player]
     local character = player.Character
-    if state and character then character:PivotTo(CFrame.new(maps[state.level].spawn)) end
+    if state and character then
+        character:PivotTo(CFrame.new(state.inLobby and LOBBY_SPAWN or maps[state.level].spawn))
+    end
 end
 
-for index, level in ipairs(Levels) do
-    local folder = Instance.new("Folder")
-    folder.Name = "Level" .. index
-    folder.Parent = world
-    local offset = Vector3.new((index - 1) * 500, 0, 0)
-    local function pos(x, z, y) return offset + Vector3.new((x - 1) * CELL, y or 0, (z - 1) * CELL) end
-    local size, cells = level.Size, carve(level.Size, level.Seed)
-    local wallColor = level.WallColor or Color3.fromRGB(120, 78, 45)
-    local function wall(p, s) part(folder, "Wall", s, p, wallColor) end
-    part(folder, "Floor", Vector3.new(size * CELL, 2, size * CELL), pos((size + 1) / 2, (size + 1) / 2, -1), Color3.fromRGB(32, 45, 49))
-    for x = 1, size do
-        for z = 1, size do
-            if cells[x][z].east then wall(pos(x, z, HEIGHT / 2) + Vector3.new(CELL / 2, 0, 0), Vector3.new(1, HEIGHT, CELL + 1)) end
-            if cells[x][z].south then wall(pos(x, z, HEIGHT / 2) + Vector3.new(0, 0, CELL / 2), Vector3.new(CELL + 1, HEIGHT, 1)) end
-        end
+local function returnToLobby(player)
+    local state = progress[player]
+    if not state then return end
+    state.inLobby = true
+    state.entryId = nil
+    player:SetAttribute("StageEntryId", nil)
+    teleport(player)
+    setStatus(player)
+end
+
+local function applyTrail(player)
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local key = player:GetAttribute("EquippedTrail") or ""
+    local old = root:FindFirstChild("WinTrail")
+    if old and old:GetAttribute("TrailKey") == key then return end
+    for _, name in ipairs({"WinTrail", "WinTrailTop", "WinTrailBottom"}) do
+        local object = root:FindFirstChild(name)
+        if object then object:Destroy() end
     end
-    wall(pos(1, (size + 1) / 2, HEIGHT / 2) - Vector3.new(CELL / 2, 0, 0), Vector3.new(1, HEIGHT, size * CELL))
-    wall(pos((size + 2) / 2, 1, HEIGHT / 2) - Vector3.new(0, 0, CELL / 2), Vector3.new((size - 1) * CELL, HEIGHT, 1))
-    local lobbyCenter = pos(1, 1, 0) + Vector3.new(0, 0, -28)
-    part(folder, "TrainingLobby", Vector3.new(32, 2, 24), lobbyCenter - Vector3.new(0, 1, 0), Color3.fromRGB(42, 48, 58))
-    part(folder, "EntranceWalkway", Vector3.new(CELL, 2, 8), pos(1, 1, -1) + Vector3.new(0, 0, -12), Color3.fromRGB(42, 48, 58))
-    for _, x in ipairs({-16, 16}) do
-        wall(lobbyCenter + Vector3.new(x, HEIGHT / 2, 0), Vector3.new(1, HEIGHT, 24))
+    local config = trailsByKey[key]
+    if not config then return end
+    local top, bottom = Instance.new("Attachment"), Instance.new("Attachment")
+    top.Name, bottom.Name = "WinTrailTop", "WinTrailBottom"
+    top.Position, bottom.Position = Vector3.new(0, 0.7, 1), Vector3.new(0, -0.7, 1)
+    top.Parent, bottom.Parent = root, root
+    local trail = Instance.new("Trail")
+    trail.Name = "WinTrail"
+    trail:SetAttribute("TrailKey", key)
+    trail.Attachment0, trail.Attachment1 = top, bottom
+    trail.Lifetime, trail.FaceCamera, trail.LightEmission = 0.8, true, 0.6
+    local colors = {}
+    for index, rgb in ipairs(config.Colors) do
+        colors[index] = ColorSequenceKeypoint.new((index - 1) / (#config.Colors - 1), Color3.fromRGB(rgb[1], rgb[2], rgb[3]))
     end
-    wall(lobbyCenter + Vector3.new(0, HEIGHT / 2, -12), Vector3.new(32, HEIGHT, 1))
-    for _, x in ipairs({-12, 12}) do
-        wall(lobbyCenter + Vector3.new(x, HEIGHT / 2, 12), Vector3.new(8, HEIGHT, 1))
-    end
-    for _, x in ipairs({-8, 8}) do
-        wall(pos(1, 1, HEIGHT / 2) + Vector3.new(x, 0, -12), Vector3.new(1, HEIGHT, 8))
-    end
-    maps[index] = {spawn = lobbyCenter + Vector3.new(0, 4, 0)}
+    trail.Color = ColorSequence.new(colors)
+    trail.Parent = root
+end
+
+local function sign(parent, text)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "Label"
+    billboard.Size = UDim2.fromOffset(240, 70)
+    billboard.StudsOffset = Vector3.new(0, 3.5, 0)
+    billboard.AlwaysOnTop = true
+    billboard.MaxDistance = 90
+    billboard.Parent = parent
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.fromScale(1, 1)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.new(1, 1, 1)
+    label.TextStrokeTransparency = 0.2
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 18
+    label.TextWrapped = true
+    label.Parent = billboard
+end
+
+local function canTrainHere(state, trainingLevel)
+    if not state then return false end
+    if trainingLevel then return not state.inLobby and state.level == trainingLevel end
+    return state.inLobby
+end
+
+local function buildTreadmills(folder, lobbyCenter, trainingLevel)
     local treadmill = Instance.new("Model")
     treadmill.Name = "SpeedTrainingTreadmill"
     treadmill.Parent = folder
@@ -148,7 +195,7 @@ for index, level in ipairs(Levels) do
         local root = character and character:FindFirstChild("HumanoidRootPart")
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local now = os.clock()
-        if not state or state.level ~= index or state.won or not root or not humanoid or humanoid.Health <= 0 then return end
+        if not canTrainHere(state, trainingLevel) or not root or not humanoid or humanoid.Health <= 0 then return end
         if (root.Position - belt.Position).Magnitude > 10 or SilverShop.baseSpeed(player, state.speed) >= MAX_SPEED then return end
         if now - state.lastTraining < TRAIN_SECONDS then return end
         state.lastTraining = now
@@ -188,21 +235,99 @@ for index, level in ipairs(Levels) do
             local character = player.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-            if not state or state.level ~= index or not root or not humanoid or humanoid.Health <= 0 then return end
+            if not canTrainHere(state, trainingLevel) or not root or not humanoid or humanoid.Health <= 0 then return end
             if (root.Position - paidBelt.Position).Magnitude > 10 then return end
             SilverShop.prompt(player, offer.Key)
         end)
     end
-    local exit = part(folder, "Exit", Vector3.new(9, 1, 9), pos(size, size, 0.5), Color3.fromRGB(60, 255, 130))
+end
+
+local lobby = Instance.new("Folder")
+lobby.Name = "Lobby"
+lobby.Parent = world
+part(lobby, "Floor", Vector3.new(90, 2, 90), LOBBY_CENTER - Vector3.new(0, 1, 0), Color3.fromRGB(35, 42, 60))
+for _, x in ipairs({-45, 45}) do
+    part(lobby, "Wall", Vector3.new(1, HEIGHT, 90), LOBBY_CENTER + Vector3.new(x, HEIGHT / 2, 0), Color3.fromRGB(65, 75, 100))
+end
+for _, z in ipairs({-45, 45}) do
+    part(lobby, "Wall", Vector3.new(90, HEIGHT, 1), LOBBY_CENTER + Vector3.new(0, HEIGHT / 2, z), Color3.fromRGB(65, 75, 100))
+end
+buildTreadmills(lobby, LOBBY_CENTER + Vector3.new(0, 0, -28), nil)
+for index, level in ipairs(Levels) do
+    local column = index <= 4 and (index - 1) or (index - 5)
+    local x = index <= 4 and (-27 + column * 18) or (-18 + column * 18)
+    local z = index <= 4 and 12 or 32
+    local pad = part(lobby, "EnterLevel" .. index, Vector3.new(10, 1, 10), LOBBY_CENTER + Vector3.new(x, 0.5, z), level.WallColor or Color3.fromRGB(120, 78, 45))
+    pad.Material = Enum.Material.Neon
+    sign(pad, "Level " .. index .. " — " .. level.WinReward .. " wins\n" .. level.Name)
+    pad.Touched:Connect(function(hit)
+        local character = hit:FindFirstAncestorOfClass("Model")
+        local player = character and Players:GetPlayerFromCharacter(character)
+        local state = player and progress[player]
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not state or not state.inLobby or not root or not humanoid or humanoid.Health <= 0 then return end
+        if not player:GetAttribute("ShopReady") or (root.Position - pad.Position).Magnitude > 12 then return end
+        if index > (player:GetAttribute("UnlockedLevel") or 1) then
+            player:SetAttribute("EconomyMessage", "Complete earlier stages to unlock Level " .. index .. ".")
+            return
+        end
+        state.level, state.inLobby = index, false
+        state.entryId = HttpService:GenerateGUID(false)
+        player:SetAttribute("StageEntryId", state.entryId)
+        teleport(player)
+        setStatus(player)
+    end)
+end
+
+for index, level in ipairs(Levels) do
+    local folder = Instance.new("Folder")
+    folder.Name = "Level" .. index
+    folder.Parent = world
+    local offset = Vector3.new((index - 1) * 500, 0, 0)
+    local function pos(x, z, y) return offset + Vector3.new((x - 1) * CELL, y or 0, (z - 1) * CELL) end
+    local size, cells = level.Size, carve(level.Size, level.Seed)
+    local wallColor = level.WallColor or Color3.fromRGB(120, 78, 45)
+    local function wall(p, s) part(folder, "Wall", s, p, wallColor) end
+    part(folder, "Floor", Vector3.new(size * CELL, 2, size * CELL), pos((size + 1) / 2, (size + 1) / 2, -1), Color3.fromRGB(32, 45, 49))
+    for x = 1, size do
+        for z = 1, size do
+            if cells[x][z].east then wall(pos(x, z, HEIGHT / 2) + Vector3.new(CELL / 2, 0, 0), Vector3.new(1, HEIGHT, CELL + 1)) end
+            if cells[x][z].south then wall(pos(x, z, HEIGHT / 2) + Vector3.new(0, 0, CELL / 2), Vector3.new(CELL + 1, HEIGHT, 1)) end
+        end
+    end
+    wall(pos(1, (size + 1) / 2, HEIGHT / 2) - Vector3.new(CELL / 2, 0, 0), Vector3.new(1, HEIGHT, size * CELL))
+    wall(pos((size + 2) / 2, 1, HEIGHT / 2) - Vector3.new(0, 0, CELL / 2), Vector3.new((size - 1) * CELL, HEIGHT, 1))
+    local lobbyCenter = pos(1, 1, 0) + Vector3.new(0, 0, -28)
+    part(folder, "TrainingLobby", Vector3.new(32, 2, 24), lobbyCenter - Vector3.new(0, 1, 0), Color3.fromRGB(42, 48, 58))
+    part(folder, "EntranceWalkway", Vector3.new(CELL, 2, 8), pos(1, 1, -1) + Vector3.new(0, 0, -12), Color3.fromRGB(42, 48, 58))
+    for _, x in ipairs({-16, 16}) do
+        wall(lobbyCenter + Vector3.new(x, HEIGHT / 2, 0), Vector3.new(1, HEIGHT, 24))
+    end
+    wall(lobbyCenter + Vector3.new(0, HEIGHT / 2, -12), Vector3.new(32, HEIGHT, 1))
+    for _, x in ipairs({-12, 12}) do
+        wall(lobbyCenter + Vector3.new(x, HEIGHT / 2, 12), Vector3.new(8, HEIGHT, 1))
+    end
+    for _, x in ipairs({-8, 8}) do
+        wall(pos(1, 1, HEIGHT / 2) + Vector3.new(x, 0, -12), Vector3.new(1, HEIGHT, 8))
+    end
+    maps[index] = {spawn = lobbyCenter + Vector3.new(0, 4, 0)}
+    buildTreadmills(folder, lobbyCenter, index)
+    local exit = part(folder, "WinButton", Vector3.new(9, 1, 9), pos(size, size, 0.5), Color3.fromRGB(60, 255, 130))
     exit.Material = Enum.Material.Neon
+    sign(exit, "STEP HERE\n+" .. level.WinReward .. " wins • Return to lobby")
     exit.Touched:Connect(function(hit)
         local character = hit:FindFirstAncestorOfClass("Model")
         local player = character and Players:GetPlayerFromCharacter(character)
         local state = player and progress[player]
-        if not state or state.level ~= index or state.won then return end
-        if index == #Levels then state.won = true
-        else state.level = index + 1; teleport(player) end
-        setStatus(player)
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not state or state.inLobby or state.level ~= index or not root or not humanoid or humanoid.Health <= 0 then return end
+        if player:GetAttribute("StageTransition") or player:GetAttribute("SkipTransition") or (root.Position - exit.Position).Magnitude > 12 then return end
+        player:SetAttribute("StageTransition", true)
+        local saved = SilverShop.completeStage(player, state.entryId, index)
+        if saved then returnToLobby(player) end
+        player:SetAttribute("StageTransition", false)
     end)
     if level.Boss then
         local guardian = part(folder, "Guardian", Vector3.new(5, 7, 5), pos(size, size - 1, 4), Color3.fromRGB(255, 65, 70))
@@ -324,7 +449,7 @@ for index, level in ipairs(Levels) do
                     local character = player.Character
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     local health = character and character:FindFirstChildOfClass("Humanoid")
-                    if state.level == index and not state.won and root and health and health.Health > 0 then
+                    if state.level == index and not state.inLobby and root and health and health.Health > 0 then
                         local distance = (root.Position - guardian.Position).Magnitude
                         if distance < nearest then target, nearest = root, distance end
                     end
@@ -356,22 +481,20 @@ end
 SilverShop.start(function(player)
     local state = progress[player]
     if not state then return end
-    local checkpoint = player:GetAttribute("PurchasedCheckpoint") or 1
-    if not state.won and checkpoint > state.level then
-        state.level = math.min(checkpoint, #Levels)
-        state.won = checkpoint > #Levels
-        teleport(player)
-        player:SetAttribute("ShopMessage", "Paid skip checkpoint restored: " .. (state.won and "Victory!" or "Level " .. state.level))
-    elseif player:GetAttribute("MillionSpeedOwned") then
-        player:SetAttribute("ShopMessage", "Permanent 1,000,000 base speed is active.")
-    elseif SilverShop.multiplier(player) > 1 then
-        player:SetAttribute("ShopMessage", "Permanent " .. SilverShop.multiplier(player) .. "x speed is active. Highest owned boost applies.")
+    local skips = player:GetAttribute("SkipUses") or 0
+    if state.skipUses and skips > state.skipUses and not state.inLobby then
+        returnToLobby(player)
+        player:SetAttribute("EconomyMessage", "Stage skipped! Its wins are saved. Choose a stage in the lobby.")
     end
+    state.skipUses = skips
+    local stats = player:FindFirstChild("leaderstats")
+    if stats then stats.Wins.Value = player:GetAttribute("Wins") or 0 end
+    applyTrail(player)
     setStatus(player)
 end, #Levels, function(offer, available)
     if offer.Price then shopFolder:SetAttribute(offer.Key .. "Price", offer.Price) end
     shopFolder:SetAttribute(offer.Key .. "Available", available)
-end)
+end, stageRewards)
 
 purchaseRequest.OnServerEvent:Connect(function(player, key)
     if key ~= "MillionSpeed" and key ~= "SkipLevel" then return end
@@ -385,8 +508,20 @@ purchaseRequest.OnServerEvent:Connect(function(player, key)
     SilverShop.prompt(player, key)
 end)
 
+trailRequest.OnServerEvent:Connect(function(player, key, action)
+    if type(key) ~= "string" or type(action) ~= "string" or not progress[player] then return end
+    local now = os.clock()
+    if now - (shopRequests[player] or -math.huge) < 0.5 then return end
+    shopRequests[player] = now
+    SilverShop.selectTrail(player, key, action)
+end)
+
 local function join(player)
-    progress[player] = {level = 1, speed = BASE_SPEED, lastTraining = os.clock()}
+    local stats = Instance.new("Folder")
+    stats.Name, stats.Parent = "leaderstats", player
+    local wins = Instance.new("IntValue")
+    wins.Name, wins.Parent = "Wins", stats
+    progress[player] = {level = 1, inLobby = true, speed = BASE_SPEED, lastTraining = os.clock()}
     setStatus(player)
     SilverShop.load(player)
     player.CharacterAdded:Connect(function(character)
@@ -394,12 +529,13 @@ local function join(player)
         local humanoid = character:WaitForChild("Humanoid")
         if not progress[player] then return end
         applySpeed(player)
+        applyTrail(player)
         teleport(player)
         setStatus(player)
     end)
     if player.Character then
         local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-        if humanoid then applySpeed(player) end
+        if humanoid then applySpeed(player); applyTrail(player) end
         teleport(player)
     end
     setStatus(player)

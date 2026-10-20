@@ -12,6 +12,7 @@ end
 local function fixture(options)
     options = options or {}
     local config = dofile("src/server/ShopConfig.lua")
+    local trailCatalog = dofile("src/shared/TrailCatalog.lua")
     if not options.actualIds then
         config.GoldTreadmillProductId, config.GodTreadmillProductId = 101, 102
     end
@@ -46,6 +47,7 @@ local function fixture(options)
     end
     local services = {
         Players = players,
+        ReplicatedStorage = {WaitForChild = function(_, name) assert(name == "TrailCatalog"); return "trails" end},
         MarketplaceService = market,
         DataStoreService = {GetDataStore = function(_, name)
             assert(name == "MazeQuestSilverV1", "existing ownership store must be retained")
@@ -54,7 +56,10 @@ local function fixture(options)
     }
     game = {GetService = function(_, name) return services[name] end}
     script = {Parent = {ShopConfig = "config"}}
-    require = function(name) assert(name == "config"); return config end
+    require = function(name)
+        if name == "trails" then return trailCatalog end
+        assert(name == "config"); return config
+    end
     task = {spawn = function(callback) callback() end}
     warn = function() end
     Enum = {InfoType = {Product = "product"}, ProductPurchaseDecision = {NotProcessedYet = "retry", PurchaseGranted = "granted"}}
@@ -69,7 +74,7 @@ local function fixture(options)
         end
     end, 7, function(offer, available)
         catalog[offer.Key] = {Price = offer.Price, Available = available}
-    end)
+    end, {0, 1, 5, 15, 50, 100, 200})
     local function player(id)
         local p = {UserId = id, Parent = true, attributes = {CurrentMazeLevel = 1}}
         function p:SetAttribute(name, value) self.attributes[name] = value end
@@ -255,6 +260,118 @@ local tests = {
         f.store.failAfterCommit = nil
         local rejoined = f.player(21); f.shop.load(rejoined)
         assert(rejoined:GetAttribute("CurrentMazeLevel") == 2 and rejoined:GetAttribute("SkipCredits") == 0)
+    end},
+
+    {"every stage awards the configured amount including zero for Level 1", function()
+        local f = fixture(); local p = f.player(22); f.shop.load(p)
+        local expected, total = {0, 1, 5, 15, 50, 100, 200}, 0
+        for stage, amount in ipairs(expected) do
+            p:SetAttribute("CurrentMazeLevel", stage)
+            assert(f.shop.completeStage(p, "entry-" .. stage, stage))
+            total = total + amount
+            assert(p:GetAttribute("Wins") == total)
+            assert(p:GetAttribute("UnlockedLevel") == math.min(stage + 1, 7))
+            assert(f.shop.completeStage(p, "entry-" .. stage, stage))
+            assert(p:GetAttribute("Wins") == total, "duplicate touch/save must not award twice")
+        end
+        assert(total == 371)
+    end},
+    {"reward retries after a lost response cannot duplicate wins", function()
+        local f = fixture(); local p = f.player(23); f.shop.load(p)
+        p:SetAttribute("CurrentMazeLevel", 3)
+        f.store.failAfterCommit = 1
+        assert(not f.shop.completeStage(p, "retry-reward", 3))
+        f.store.failAfterCommit = nil
+        assert(f.shop.completeStage(p, "retry-reward", 3))
+        assert(p:GetAttribute("Wins") == 5)
+    end},
+    {"trail purchase deducts its server price and repeat buys are free", function()
+        local f = fixture(); f.store.profiles["24"] = {Wins = 150}
+        local p = f.player(24); f.shop.load(p)
+        assert(f.shop.selectTrail(p, "White", "Buy"))
+        assert(p:GetAttribute("Wins") == 50 and p:GetAttribute("OwnsTrail_White"))
+        assert(p:GetAttribute("EquippedTrail") == "White")
+        assert(f.shop.selectTrail(p, "White", "Buy") and p:GetAttribute("Wins") == 50)
+        assert(f.shop.selectTrail(p, "White", "Unequip") and p:GetAttribute("EquippedTrail") == "")
+        assert(f.shop.selectTrail(p, "White", "Equip") and p:GetAttribute("Wins") == 50)
+    end},
+    {"insufficient stored wins block purchases regardless of displayed balance", function()
+        local f = fixture(); local p = f.player(25); f.shop.load(p)
+        p:SetAttribute("Wins", 999999)
+        assert(not f.shop.selectTrail(p, "Red", "Buy"))
+        assert(not p:GetAttribute("OwnsTrail_Red") and p:GetAttribute("Wins") == 0)
+        assert(p:GetAttribute("EquippedTrail") == "")
+    end},
+    {"wins, ownership, equipment and unlocked stages persist across joins", function()
+        local f = fixture(); f.store.profiles["26"] = {Wins = 350, UnlockedLevel = 5}
+        local p = f.player(26); f.shop.load(p)
+        assert(f.shop.selectTrail(p, "Green", "Buy"))
+        local rejoined = f.player(26); f.shop.load(rejoined)
+        assert(rejoined:GetAttribute("Wins") == 50 and rejoined:GetAttribute("UnlockedLevel") == 5)
+        assert(rejoined:GetAttribute("EquippedTrail") == "Green" and rejoined:GetAttribute("OwnsTrail_Green"))
+    end},
+    {"failed trail writes do not grant a trail or lose wins", function()
+        local f = fixture(); f.store.profiles["27"] = {Wins = 100}
+        local p = f.player(27); f.shop.load(p); f.store.failWrite = true
+        assert(not f.shop.selectTrail(p, "White", "Buy"))
+        assert(p:GetAttribute("Wins") == 100 and not p:GetAttribute("OwnsTrail_White"))
+        f.store.failWrite = false
+        assert(f.shop.selectTrail(p, "White", "Buy") and p:GetAttribute("Wins") == 0)
+    end},
+    {"trail retry after a committed write never charges twice", function()
+        local f = fixture(); f.store.profiles["28"] = {Wins = 1000}
+        local p = f.player(28); f.shop.load(p); f.store.failAfterCommit = 1
+        assert(not f.shop.selectTrail(p, "White", "Buy"))
+        f.store.failAfterCommit = nil
+        assert(f.shop.selectTrail(p, "White", "Buy"))
+        assert(p:GetAttribute("Wins") == 900 and p:GetAttribute("EquippedTrail") == "White")
+    end},
+    {"unowned equipment and unknown trail actions are rejected", function()
+        local f = fixture(); local p = f.player(29); f.shop.load(p)
+        assert(not f.shop.selectTrail(p, "Blue", "Equip"))
+        local writes = f.store.writes
+        assert(not f.shop.selectTrail(p, "Unknown", "Buy"))
+        assert(not f.shop.selectTrail(p, "White", "Free"))
+        assert(f.store.writes == writes and p:GetAttribute("EquippedTrail") == "")
+    end},
+    {"skipped stages award wins once and stage transitions block overlapping skips", function()
+        local f = fixture(); local p = f.player(30); f.shop.load(p)
+        p:SetAttribute("CurrentMazeLevel", 4)
+        f.receipt(30, f.config.SkipLevelProductId, "rewarded-skip")
+        assert(p:GetAttribute("Wins") == 15 and p:GetAttribute("SkipUses") == 1)
+        f.receipt(30, f.config.SkipLevelProductId, "rewarded-skip")
+        assert(p:GetAttribute("Wins") == 15 and p:GetAttribute("SkipUses") == 1)
+        p:SetAttribute("StageTransition", true)
+        f.receipt(30, f.config.SkipLevelProductId, "wait-for-button")
+        assert(p:GetAttribute("Wins") == 15 and p:GetAttribute("SkipCredits") == 1)
+    end},
+    {"lobby cannot consume a skip or claim a stage reward", function()
+        local f = fixture(); local p = f.player(31); f.shop.load(p)
+        p:SetAttribute("CurrentMazeLevel", 0)
+        f.shop.prompt(p, "SkipLevel")
+        assert(#f.market.prompts == 0)
+        assert(not f.shop.completeStage(p, "forged-level", 7))
+        assert(p:GetAttribute("Wins") == 0)
+    end},
+    {"the four trail prices are charged correctly", function()
+        for _, item in ipairs({{"White", 100}, {"Green", 300}, {"Blue", 1000}, {"Red", 10000}}) do
+            local f = fixture(); f.store.profiles["32"] = {Wins = item[2]}
+            local p = f.player(32); f.shop.load(p)
+            assert(f.shop.selectTrail(p, item[1], "Buy"))
+            assert(p:GetAttribute("Wins") == 0 and p:GetAttribute("OwnsTrail_" .. item[1]))
+        end
+    end},
+
+    {"a committed skip and a later pad touch cannot pay twice for one entry", function()
+        local f = fixture(); local p = f.player(33); f.shop.load(p)
+        p:SetAttribute("CurrentMazeLevel", 3)
+        p:SetAttribute("StageEntryId", "same-attempt")
+        f.store.failAfterCommit = 2
+        f.receipt(33, f.config.SkipLevelProductId, "ambiguous-skip")
+        f.store.failAfterCommit = nil
+        p:SetAttribute("CurrentMazeLevel", 3)
+        assert(f.shop.completeStage(p, "same-attempt", 3))
+        assert(p:GetAttribute("Wins") == 5)
     end},
 }
 for _, test in ipairs(tests) do
