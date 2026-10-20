@@ -110,6 +110,7 @@ for index, level in ipairs(Levels) do
         guardian.Size = Vector3.new(4, 5, 3)
         guardian.Anchored = false
         guardian.Color = (level.BossKind == "Cat" or level.BossKind == "Wolf" or level.BossKind == "Rat") and Color3.fromRGB(155, 155, 165) or Color3.fromRGB(112, 68, 38)
+        if level.BossKind == "Lion" then guardian.Color = Color3.fromRGB(210, 155, 55) end
         bear.PrimaryPart = guardian
         local humanoid = Instance.new("Humanoid")
         humanoid.RequiresNeck = false
@@ -177,6 +178,17 @@ for index, level in ipairs(Levels) do
             for _, x in ipairs({-1.5, 1.5}) do
                 feature("Whiskers", Vector3.new(2, 0.1, 0.1), Vector3.new(x, 2.5, -2.8), Color3.new(1, 1, 1))
             end
+        end
+        if level.BossKind == "Lion" then
+            local maneColor = Color3.fromRGB(135, 75, 25)
+            for n = 0, 7 do
+                local angle = n * math.pi / 4
+                feature("Mane", Vector3.new(1.6, 1.6, 1.6), Vector3.new(math.cos(angle) * 2.1, 3 + math.sin(angle) * 2.1, 0.4), maneColor)
+            end
+            bear.Muzzle.Color = Color3.fromRGB(240, 205, 135)
+            feature("LionNose", Vector3.new(0.8, 0.5, 0.5), Vector3.new(0, 2.8, -2.3), Color3.fromRGB(45, 30, 20))
+            feature("LionTail", Vector3.new(0.6, 0.6, 4), Vector3.new(0, -1, 3), brown)
+            feature("TailTuft", Vector3.new(1.2, 1.2, 1.2), Vector3.new(0, -1, 5), maneColor)
         end
         guardian:SetNetworkOwner(nil)
         task.spawn(function()
