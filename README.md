@@ -38,12 +38,24 @@ Source syntax and project JSON can be checked outside Studio. Actual movement, t
 
 In Studio, train at the first entrance and verify speed rises from 16 to 32. Repeat training, die, and advance a level to confirm upgrades remain. With two clients, confirm training affects only its user. Check that dead or distant players cannot train and that speed stops at 640. These gameplay checks require Studio and have not been run in the cloud.
 
-## Silver treadmill purchase setup
+## Paid treadmill purchase setup
 
-Each entrance also has a silver treadmill. Its one-time unlock permanently multiplies player speed by 2.5, including later training gains (maximum effective speed 1600). The multiplier does not stack. Base training speed still resets when leaving; the purchased multiplier is saved across sessions.
+Each level entrance has a training lobby with free, silver, gold, and god treadmills. Purchased boosts are permanent and do not stack: the highest owned multiplier applies to current base speed and future training gains. Base training speed resets when leaving; purchased tiers persist. Buying a lower or already owned tier is blocked when an equal or higher boost is active.
 
-Developer Product **3720262741** is configured in `src/server/ShopConfig.lua`. Ensure it belongs to this experience and costs **15 Robux** in Roblox Creator Dashboard. Setting the ID to 0 disables purchases. Roblox controls the actual checkout price; this game enables prompts only after checking the configured price. Keep the product price fixed at 15 Robux. If using regional pricing or price optimization, disable those for this fixed-price product.
+| Treadmill | Speed multiplier | Price | Developer Product ID |
+| --- | --- | --- | --- |
+| Silver | 2.5x | 15 Robux | 3720262741 |
+| Gold | 5x | 30 Robux | Pending |
+| God | 99x | 50 Robux | Pending |
 
-Publish the experience before testing purchases. Use an isolated test experience and Studio's supported purchase testing; enable Studio API access only for that test experience to test DataStore persistence. Verify successful payment grants one multiplier, cancellation grants none, rejoining restores ownership, and receipt retries do not stack boosts. Failed ownership reads block purchase prompts. Failed receipt writes defer acknowledgment so Roblox can retry. Do not replace `ProcessReceipt` with another handler; integrate future products into `SilverShop`.
+Create the Gold and God Developer Products for this experience in Creator Dashboard at their listed prices. Put their numeric IDs in `GoldTreadmillProductId` and `GodTreadmillProductId` in `src/server/ShopConfig.lua`. Zero disables only that tier's purchase prompt. Silver retains its configured ID and existing saved ownership.
 
-Purchase and DataStore behavior have not been verified in Roblox Studio. The configured product’s ownership and price still need verification in Roblox; the server checks its price before enabling purchase prompts.
+Roblox controls checkout prices. The server checks each configured product's price before enabling its prompts. Keep the prices fixed as listed; disable regional pricing and price optimization for these fixed-price products. The configured products must belong to this experience.
+
+Receipt processing stores ownership before acknowledging payment; retried receipts never multiply a boost again. Cancelled or merely closed checkout windows grant nothing. Failed storage writes defer acknowledgment for Roblox to retry. The existing `MazeQuestSilverV1` DataStore now preserves every tier, including legacy silver ownership. `SilverShop` handles every product through one `ProcessReceipt` callback; integrate future products there instead of replacing it.
+
+Publish the experience before testing purchases. Use an isolated test experience and supported Studio purchase testing; enable Studio API access only for that test experience when testing persistence. Check cancelled and successful purchases, rejoining, lower-tier purchase prevention, all four treadmill positions, and high-speed movement through maze turns. At the 640 base speed cap, the configured maximums are 1,600 (silver), 3,200 (gold), and 63,360 (god) studs/sec; actual motion depends on Roblox physics and maze geometry. Live purchases, DataStore behavior, and movement have not been verified in Roblox Studio.
+
+### Automated shop tests
+
+`tests/shop_spec.lua` runs with Lua 5.3+ (`lua tests/shop_spec.lua`) or the Fengari Lua runner, from the repository root. It mocks Roblox services and makes no purchases or network requests. The tests cover receipt retries, failed storage, cancelled checkouts, price checks, highest-tier selection, legacy ownership, rejoining, offline grants, and a concurrent ownership read. These checks do not replace Studio purchase testing.

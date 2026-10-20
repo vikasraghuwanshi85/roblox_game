@@ -19,7 +19,7 @@ local function refresh()
     local status = player:GetAttribute("MazeStatus") or "Loading maze…"
     local speed = player:GetAttribute("TrainingSpeed") or 16
     label.Text = status .. "\nSpeed: " .. speed .. " studs/sec — train +16 base speed (max 640)."
-        .. "\n" .. (player:GetAttribute("ShopMessage") or "Silver treadmill: permanent 2.5x speed, 15 Robux.")
+        .. "\n" .. (player:GetAttribute("ShopMessage") or "Treadmills: Silver 2.5x / 15 Robux; Gold 5x / 30; God 99x / 50. Highest boost applies.")
 end
 player:GetAttributeChangedSignal("MazeStatus"):Connect(refresh)
 player:GetAttributeChangedSignal("TrainingSpeed"):Connect(refresh)

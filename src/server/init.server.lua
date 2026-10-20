@@ -57,7 +57,9 @@ end
 local function applySpeed(player)
     local state = progress[player]
     if not state then return end
-    local speed = state.speed * SilverShop.multiplier(player)
+    local multiplier = SilverShop.multiplier(player)
+    local speed = state.speed * multiplier
+    player:SetAttribute("SpeedMultiplier", multiplier)
     player:SetAttribute("TrainingSpeed", speed)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if humanoid then humanoid.WalkSpeed = speed end
@@ -99,12 +101,25 @@ for index, level in ipairs(Levels) do
         end
     end
     wall(pos(1, (size + 1) / 2, HEIGHT / 2) - Vector3.new(CELL / 2, 0, 0), Vector3.new(1, HEIGHT, size * CELL))
-    wall(pos((size + 1) / 2, 1, HEIGHT / 2) - Vector3.new(0, 0, CELL / 2), Vector3.new(size * CELL, HEIGHT, 1))
-    maps[index] = {spawn = pos(1, 1, 4)}
+    wall(pos((size + 2) / 2, 1, HEIGHT / 2) - Vector3.new(0, 0, CELL / 2), Vector3.new((size - 1) * CELL, HEIGHT, 1))
+    local lobbyCenter = pos(1, 1, 0) + Vector3.new(0, 0, -28)
+    part(folder, "TrainingLobby", Vector3.new(32, 2, 24), lobbyCenter - Vector3.new(0, 1, 0), Color3.fromRGB(42, 48, 58))
+    part(folder, "EntranceWalkway", Vector3.new(CELL, 2, 8), pos(1, 1, -1) + Vector3.new(0, 0, -12), Color3.fromRGB(42, 48, 58))
+    for _, x in ipairs({-16, 16}) do
+        wall(lobbyCenter + Vector3.new(x, HEIGHT / 2, 0), Vector3.new(1, HEIGHT, 24))
+    end
+    wall(lobbyCenter + Vector3.new(0, HEIGHT / 2, -12), Vector3.new(32, HEIGHT, 1))
+    for _, x in ipairs({-12, 12}) do
+        wall(lobbyCenter + Vector3.new(x, HEIGHT / 2, 12), Vector3.new(8, HEIGHT, 1))
+    end
+    for _, x in ipairs({-8, 8}) do
+        wall(pos(1, 1, HEIGHT / 2) + Vector3.new(x, 0, -12), Vector3.new(1, HEIGHT, 8))
+    end
+    maps[index] = {spawn = lobbyCenter + Vector3.new(0, 4, 0)}
     local treadmill = Instance.new("Model")
     treadmill.Name = "SpeedTrainingTreadmill"
     treadmill.Parent = folder
-    local belt = part(treadmill, "Belt", Vector3.new(5, 0.5, 7), pos(1, 1, 0.25) + Vector3.new(3, 0, 0), Color3.fromRGB(25, 30, 40))
+    local belt = part(treadmill, "Belt", Vector3.new(5, 0.5, 7), lobbyCenter + Vector3.new(-8, 0.25, -6), Color3.fromRGB(25, 30, 40))
     for _, x in ipairs({-2.7, 2.7}) do
         part(treadmill, "Rail", Vector3.new(0.4, 2, 7), belt.Position + Vector3.new(x, 1, 0), Color3.fromRGB(100, 190, 240))
     end
@@ -130,30 +145,43 @@ for index, level in ipairs(Levels) do
         applySpeed(player)
         setStatus(player)
     end)
-    local silver = Instance.new("Model")
-    silver.Name = "SilverTreadmill"
-    silver.Parent = folder
-    local silverBelt = part(silver, "SilverBelt", Vector3.new(5, 0.5, 7), pos(1, 1, 0.25) + Vector3.new(-3, 0, 0), Color3.fromRGB(190, 195, 205))
-    silverBelt.Material = Enum.Material.Metal
-    for _, x in ipairs({-2.7, 2.7}) do
-        part(silver, "SilverRail", Vector3.new(0.4, 2, 7), silverBelt.Position + Vector3.new(x, 1, 0), Color3.fromRGB(220, 225, 235)).Material = Enum.Material.Metal
+    local tierColors = {
+        Silver = Color3.fromRGB(190, 195, 205),
+        Gold = Color3.fromRGB(245, 190, 45),
+        God = Color3.fromRGB(185, 95, 255),
+    }
+    local tierPositions = {
+        Silver = Vector3.new(8, 0.25, -6),
+        Gold = Vector3.new(-8, 0.25, 6),
+        God = Vector3.new(8, 0.25, 6),
+    }
+    for _, offer in ipairs(SilverShop.offers()) do
+        local machine = Instance.new("Model")
+        machine.Name = offer.Key .. "Treadmill"
+        machine.Parent = folder
+        local paidBelt = part(machine, "Belt", Vector3.new(5, 0.5, 7), lobbyCenter + tierPositions[offer.Key], tierColors[offer.Key])
+        paidBelt.Material = offer.Key == "God" and Enum.Material.Neon or Enum.Material.Metal
+        for _, x in ipairs({-2.7, 2.7}) do
+            part(machine, "Rail", Vector3.new(0.4, 2, 7), paidBelt.Position + Vector3.new(x, 1, 0), tierColors[offer.Key]).Material = Enum.Material.Metal
+        end
+        part(machine, "Console", Vector3.new(5, 1, 0.6), paidBelt.Position + Vector3.new(0, 2, -3.2), tierColors[offer.Key])
+        local buy = Instance.new("ProximityPrompt")
+        buy.ActionText = "Unlock " .. offer.Multiplier .. "x speed — " .. offer.Price .. " Robux"
+        buy.ObjectText = offer.Key .. " Treadmill (permanent; highest boost applies)"
+        buy.HoldDuration = 1
+        buy.MaxActivationDistance = 8
+        buy.RequiresLineOfSight = false
+        buy.Parent = paidBelt
+        buy.Triggered:Connect(function(player)
+            local state = progress[player]
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            if not state or state.level ~= index or not root or not humanoid or humanoid.Health <= 0 then return end
+            if (root.Position - paidBelt.Position).Magnitude > 10 then return end
+            SilverShop.prompt(player, offer.Key)
+        end)
     end
-    local buy = Instance.new("ProximityPrompt")
-    buy.ActionText = "Unlock 2.5x speed — 15 Robux"
-    buy.ObjectText = "Silver Treadmill (permanent, non-stacking)"
-    buy.HoldDuration = 1
-    buy.MaxActivationDistance = 8
-    buy.RequiresLineOfSight = false
-    buy.Parent = silverBelt
-    buy.Triggered:Connect(function(player)
-        local state = progress[player]
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        if not state or state.level ~= index or not root or not humanoid or humanoid.Health <= 0 then return end
-        if (root.Position - silverBelt.Position).Magnitude > 10 then return end
-        SilverShop.prompt(player)
-    end)
     local exit = part(folder, "Exit", Vector3.new(9, 1, 9), pos(size, size, 0.5), Color3.fromRGB(60, 255, 130))
     exit.Material = Enum.Material.Neon
     exit.Touched:Connect(function(hit)
@@ -341,8 +369,9 @@ for index, level in ipairs(Levels) do
 end
 
 SilverShop.start(function(player)
-    if player:GetAttribute("SilverTreadmillOwned") then
-        player:SetAttribute("ShopMessage", "Silver treadmill unlocked! Permanent 2.5x speed is active.")
+    local multiplier = SilverShop.multiplier(player)
+    if multiplier > 1 then
+        player:SetAttribute("ShopMessage", "Permanent " .. multiplier .. "x speed is active. Highest owned boost applies.")
     end
     applySpeed(player)
 end)

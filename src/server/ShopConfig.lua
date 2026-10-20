@@ -1,7 +1,13 @@
 return {
-    -- This Developer Product must belong to the experience and cost 15 Robux.
-    -- Setting the ID to zero disables purchases.
+    -- Developer Products must belong to this experience and match these prices.
+    -- Zero disables the corresponding purchase until its Product ID is supplied.
     SilverTreadmillProductId = 3720262741,
     SilverTreadmillPrice = 15,
     SilverMultiplier = 2.5,
+    GoldTreadmillProductId = 0,
+    GoldTreadmillPrice = 30,
+    GoldMultiplier = 5,
+    GodTreadmillProductId = 0,
+    GodTreadmillPrice = 50,
+    GodMultiplier = 99,
 }
