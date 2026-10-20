@@ -1,11 +1,12 @@
 # Maze Quest
 
-A Roblox maze adventure with four deterministic, fully connected mazes.
+A Roblox maze adventure with five deterministic, fully connected mazes.
 
 - Level 1: The Forgotten Garden. Find the green exit; no boss.
 - Level 2: Bruno's Labyrinth. Bruno the Bear chases players at **29 studs per second**. Strike Bruno three times using its proximity prompt, then reach the green exit. Yellow signals an incoming damage pulse: step back or take cover.
 - Level 3: Cally's Green Maze. Green walls and Cally the Cat, who chases players at **45 studs per second**. Defeat Cally with three strikes, then find the exit to reach Level 4.
-- Level 4: Wiskey's Wolf Maze. Wiskey the Wolf chases players at **90 studs per second**. Defeat Wiskey with three strikes and reach the exit to win. Level 4 walls are blue.
+- Level 4: Wiskey's Wolf Maze. Wiskey the Wolf chases players at **90 studs per second**. Defeat Wiskey with three strikes and reach the exit to enter Level 5. Level 4 walls are blue.
+- Level 5: Randy's Red Maze. Red walls and Randy the Rat, with a configured speed of **150 studs per second**. Defeat Randy with three strikes and reach the exit to win.
 - Progress is independent for each player. Death returns you to your current level's entrance; leaving resets progress. Boss completion is per player.
 
 Level 1 has no boss. Level 2 features Bruno the Bear with a configured WalkSpeed of 29 studs per second; walls and turns can reduce actual travel speed.
