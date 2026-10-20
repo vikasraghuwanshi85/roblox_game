@@ -1,7 +1,7 @@
 -- Add levels here. Level 1 deliberately has no boss.
 return {
     {Name = "The Forgotten Garden", Size = 9, Seed = 142, Boss = false},
-    {Name = "Bruno's Labyrinth", Size = 13, Seed = 987, Boss = true, BossName = "Bruno the Bear", BossSpeed = 29},
+    {Name = "Bruno's Labyrinth", Size = 13, Seed = 987, Boss = true, BossName = "Bruno the Bear", BossSpeed = 1000},
     {Name = "Cally's Green Maze", Size = 17, Seed = 2045, Boss = true, BossName = "Cally the Cat", BossSpeed = 45, BossKind = "Cat", WallColor = Color3.fromRGB(45, 150, 65)},
     {Name = "Wiskey's Wolf Maze", Size = 21, Seed = 4090, Boss = true, BossName = "Wiskey the Wolf", BossSpeed = 90, BossKind = "Wolf", WallColor = Color3.fromRGB(45, 100, 220)},
     {Name = "Randy's Red Maze", Size = 25, Seed = 5150, Boss = true, BossName = "Randy the Rat", BossSpeed = 150, BossKind = "Rat", WallColor = Color3.fromRGB(205, 40, 40)},

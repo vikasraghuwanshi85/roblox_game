@@ -1,5 +1,6 @@
 local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Levels = require(script.Levels)
 local SilverShop = require(script.SilverShop)
 local CELL, HEIGHT = 16, 14
@@ -7,7 +8,13 @@ local BASE_SPEED, SPEED_GAIN, MAX_SPEED, TRAIN_SECONDS = 16, 16, 640, 2
 local world = Instance.new("Folder")
 world.Name = "MazeQuest"
 world.Parent = workspace
-local maps, progress, cooldowns = {}, {}, {}
+local maps, progress, shopRequests = {}, {}, {}
+local shopFolder = Instance.new("Folder")
+shopFolder.Name = "MazeShop"
+shopFolder.Parent = ReplicatedStorage
+local purchaseRequest = Instance.new("RemoteEvent")
+purchaseRequest.Name = "PurchaseRequest"
+purchaseRequest.Parent = shopFolder
 
 local function part(parent, name, size, position, color)
     local p = Instance.new("Part")
@@ -58,7 +65,9 @@ local function applySpeed(player)
     local state = progress[player]
     if not state then return end
     local multiplier = SilverShop.multiplier(player)
-    local speed = state.speed * multiplier
+    local baseSpeed = SilverShop.baseSpeed(player, state.speed)
+    local speed = baseSpeed * multiplier
+    player:SetAttribute("BaseSpeed", baseSpeed)
     player:SetAttribute("SpeedMultiplier", multiplier)
     player:SetAttribute("TrainingSpeed", speed)
     local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
@@ -69,11 +78,13 @@ local function setStatus(player)
     local state = progress[player]
     if not state then return end
     applySpeed(player)
+    player:SetAttribute("CurrentMazeLevel", state.won and #Levels + 1 or state.level)
+    player:SetAttribute("MazeWon", state.won or false)
     if state.won then
-        player:SetAttribute("MazeStatus", "Victory! You escaped every maze. Rejoin to play again.")
+        player:SetAttribute("MazeStatus", "Victory! You escaped every maze!")
     else
         local level = Levels[state.level]
-        local hint = level.Boss and (state.bossDefeated and "Guardian defeated! Find the green exit." or (level.BossName .. " runs at " .. level.BossSpeed .. " studs/sec! Hold E nearby three times to win!")) or "No boss. Find the green exit!"
+        local hint = level.Boss and (level.BossName .. " is immortal and chases at " .. level.BossSpeed .. " studs/sec. Find the green exit!") or "No boss. Find the green exit!"
         player:SetAttribute("MazeStatus", "Level " .. state.level .. " — " .. level.Name .. "\n" .. hint)
     end
 end
@@ -138,7 +149,7 @@ for index, level in ipairs(Levels) do
         local humanoid = character and character:FindFirstChildOfClass("Humanoid")
         local now = os.clock()
         if not state or state.level ~= index or state.won or not root or not humanoid or humanoid.Health <= 0 then return end
-        if (root.Position - belt.Position).Magnitude > 10 or state.speed >= MAX_SPEED then return end
+        if (root.Position - belt.Position).Magnitude > 10 or SilverShop.baseSpeed(player, state.speed) >= MAX_SPEED then return end
         if now - state.lastTraining < TRAIN_SECONDS then return end
         state.lastTraining = now
         state.speed = math.min(MAX_SPEED, state.speed + SPEED_GAIN)
@@ -185,12 +196,12 @@ for index, level in ipairs(Levels) do
     local exit = part(folder, "Exit", Vector3.new(9, 1, 9), pos(size, size, 0.5), Color3.fromRGB(60, 255, 130))
     exit.Material = Enum.Material.Neon
     exit.Touched:Connect(function(hit)
-        local player = Players:GetPlayerFromCharacter(hit:FindFirstAncestorOfClass("Model"))
+        local character = hit:FindFirstAncestorOfClass("Model")
+        local player = character and Players:GetPlayerFromCharacter(character)
         local state = player and progress[player]
         if not state or state.level ~= index or state.won then return end
-        if level.Boss and not state.bossDefeated then return end
         if index == #Levels then state.won = true
-        else state.level = index + 1; state.bossDefeated = false; state.hits = 0; teleport(player) end
+        else state.level = index + 1; teleport(player) end
         setStatus(player)
     end)
     if level.Boss then
@@ -210,7 +221,19 @@ for index, level in ipairs(Levels) do
         humanoid.WalkSpeed = level.BossSpeed or 29
         humanoid.HipHeight = 1
         humanoid.DisplayName = bear.Name
+        humanoid.BreakJointsOnDeath = false
+        humanoid.MaxHealth = 1000000
+        humanoid.Health = humanoid.MaxHealth
+        humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+        humanoid.HealthChanged:Connect(function(health)
+            if health < humanoid.MaxHealth then humanoid.Health = humanoid.MaxHealth end
+        end)
         humanoid.Parent = bear
+        bear:SetAttribute("Immortal", true)
+        local protection = Instance.new("ForceField")
+        protection.Visible = false
+        protection.Parent = bear
         local function feature(name, size, relative, color)
             local p = part(bear, name, size, guardian.Position + relative, color)
             p.Anchored = false
@@ -301,7 +324,7 @@ for index, level in ipairs(Levels) do
                     local character = player.Character
                     local root = character and character:FindFirstChild("HumanoidRootPart")
                     local health = character and character:FindFirstChildOfClass("Humanoid")
-                    if state.level == index and not state.bossDefeated and root and health and health.Health > 0 then
+                    if state.level == index and not state.won and root and health and health.Health > 0 then
                         local distance = (root.Position - guardian.Position).Magnitude
                         if distance < nearest then target, nearest = root, distance end
                     end
@@ -326,58 +349,45 @@ for index, level in ipairs(Levels) do
                 task.wait(0.15)
             end
         end)
-        local prompt = Instance.new("ProximityPrompt")
-        prompt.ActionText = "Strike " .. (string.match(bear.Name, "^%S+") or bear.Name)
-        prompt.ObjectText = bear.Name .. " — 3 strikes"
-        prompt.HoldDuration = 0.6
-        prompt.MaxActivationDistance = 11
-        prompt.RequiresLineOfSight = true
-        prompt.Parent = guardian
-        prompt.Triggered:Connect(function(player)
-            local state = progress[player]
-            local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-            local now = os.clock()
-            if not state or state.level ~= index or state.bossDefeated or not root then return end
-            if (root.Position - guardian.Position).Magnitude > 13 or now - (cooldowns[player] or 0) < 0.6 then return end
-            cooldowns[player] = now
-            state.hits = state.hits + 1
-            state.bossDefeated = state.hits >= 3
-            setStatus(player)
-        end)
-        -- Telegraph a short-range pulse; taking cover or stepping back avoids damage.
-        task.spawn(function()
-            while guardian.Parent do
-                task.wait(3)
-                guardian.Color = Color3.fromRGB(255, 210, 60)
-                task.wait(1)
-                guardian.Color = Color3.fromRGB(255, 65, 70)
-                for player, state in pairs(progress) do
-                    local character = player.Character
-                    local root = character and character:FindFirstChild("HumanoidRootPart")
-                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                    if state.level == index and not state.bossDefeated and root and humanoid and (root.Position - guardian.Position).Magnitude < 12 then
-                        local params = RaycastParams.new()
-                        params.FilterType = Enum.RaycastFilterType.Exclude
-                        params.FilterDescendantsInstances = {bear}
-                        local hit = workspace:Raycast(guardian.Position, root.Position - guardian.Position, params)
-                        if hit and hit.Instance:IsDescendantOf(character) then humanoid:TakeDamage(25) end
-                    end
-                end
-            end
-        end)
+
     end
 end
 
 SilverShop.start(function(player)
-    local multiplier = SilverShop.multiplier(player)
-    if multiplier > 1 then
-        player:SetAttribute("ShopMessage", "Permanent " .. multiplier .. "x speed is active. Highest owned boost applies.")
+    local state = progress[player]
+    if not state then return end
+    local checkpoint = player:GetAttribute("PurchasedCheckpoint") or 1
+    if not state.won and checkpoint > state.level then
+        state.level = math.min(checkpoint, #Levels)
+        state.won = checkpoint > #Levels
+        teleport(player)
+        player:SetAttribute("ShopMessage", "Paid skip checkpoint restored: " .. (state.won and "Victory!" or "Level " .. state.level))
+    elseif player:GetAttribute("MillionSpeedOwned") then
+        player:SetAttribute("ShopMessage", "Permanent 1,000,000 base speed is active.")
+    elseif SilverShop.multiplier(player) > 1 then
+        player:SetAttribute("ShopMessage", "Permanent " .. SilverShop.multiplier(player) .. "x speed is active. Highest owned boost applies.")
     end
-    applySpeed(player)
+    setStatus(player)
+end, #Levels, function(offer, available)
+    if offer.Price then shopFolder:SetAttribute(offer.Key .. "Price", offer.Price) end
+    shopFolder:SetAttribute(offer.Key .. "Available", available)
+end)
+
+purchaseRequest.OnServerEvent:Connect(function(player, key)
+    if key ~= "MillionSpeed" and key ~= "SkipLevel" then return end
+    local state = progress[player]
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not state or not humanoid or humanoid.Health <= 0 then return end
+    local now = os.clock()
+    if now - (shopRequests[player] or -math.huge) < 1 then return end
+    shopRequests[player] = now
+    SilverShop.prompt(player, key)
 end)
 
 local function join(player)
-    progress[player] = {level = 1, hits = 0, bossDefeated = false, speed = BASE_SPEED, lastTraining = os.clock()}
+    progress[player] = {level = 1, speed = BASE_SPEED, lastTraining = os.clock()}
+    setStatus(player)
     SilverShop.load(player)
     player.CharacterAdded:Connect(function(character)
         character:WaitForChild("HumanoidRootPart")
@@ -395,5 +405,5 @@ local function join(player)
     setStatus(player)
 end
 Players.PlayerAdded:Connect(join)
-Players.PlayerRemoving:Connect(function(player) progress[player] = nil; cooldowns[player] = nil end)
+Players.PlayerRemoving:Connect(function(player) progress[player] = nil; shopRequests[player] = nil end)
 for _, player in ipairs(Players:GetPlayers()) do join(player) end
