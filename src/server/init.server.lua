@@ -5,6 +5,7 @@ local HttpService = game:GetService("HttpService")
 local TrailCatalog = require(ReplicatedStorage:WaitForChild("TrailCatalog"))
 local Levels = require(script.Levels)
 local SilverShop = require(script.SilverShop)
+local AdminPowers = require(script.AdminPowers)
 local CELL, HEIGHT = 16, 14
 local BASE_SPEED, SPEED_GAIN, MAX_SPEED, TRAIN_SECONDS = 16, 16, 640, 2
 local world = Instance.new("Folder")
@@ -25,6 +26,9 @@ purchaseRequest.Parent = shopFolder
 local trailRequest = Instance.new("RemoteEvent")
 trailRequest.Name = "TrailRequest"
 trailRequest.Parent = shopFolder
+local adminRequest = Instance.new("RemoteEvent")
+adminRequest.Name = "AdminRequest"
+adminRequest.Parent = shopFolder
 
 local function part(parent, name, size, position, color)
     local p = Instance.new("Part")
@@ -75,8 +79,9 @@ local function applySpeed(player)
     local state = progress[player]
     if not state then return end
     local multiplier = SilverShop.multiplier(player)
+    if AdminPowers.godEnabled(player) then multiplier = math.max(multiplier, 99) end
     local baseSpeed = SilverShop.baseSpeed(player, state.speed)
-    local speed = baseSpeed * multiplier
+    local speed = AdminPowers.speed(player, baseSpeed * multiplier)
     player:SetAttribute("BaseSpeed", baseSpeed)
     player:SetAttribute("SpeedMultiplier", multiplier)
     player:SetAttribute("TrainingSpeed", speed)
@@ -237,6 +242,11 @@ local function buildTreadmills(folder, lobbyCenter, trainingLevel)
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
             if not canTrainHere(state, trainingLevel) or not root or not humanoid or humanoid.Health <= 0 then return end
             if (root.Position - paidBelt.Position).Magnitude > 10 then return end
+            if offer.Key == "God" and AdminPowers.enableGod(player) then
+                player:SetAttribute("EconomyMessage", nil)
+                player:SetAttribute("ShopMessage", "Admin God treadmill: free 99x boost active.")
+                return
+            end
             SilverShop.prompt(player, offer.Key)
         end)
     end
@@ -478,6 +488,13 @@ for index, level in ipairs(Levels) do
     end
 end
 
+AdminPowers.start(function(player)
+    if progress[player] then setStatus(player) end
+end)
+adminRequest.OnServerEvent:Connect(function(player, action, direction)
+    if type(action) == "string" and progress[player] then AdminPowers.handle(player, action, direction) end
+end)
+
 SilverShop.start(function(player)
     local state = progress[player]
     if not state then return end
@@ -522,12 +539,14 @@ local function join(player)
     local wins = Instance.new("IntValue")
     wins.Name, wins.Parent = "Wins", stats
     progress[player] = {level = 1, inLobby = true, speed = BASE_SPEED, lastTraining = os.clock()}
+    AdminPowers.register(player)
     setStatus(player)
     SilverShop.load(player)
     player.CharacterAdded:Connect(function(character)
         character:WaitForChild("HumanoidRootPart")
         local humanoid = character:WaitForChild("Humanoid")
         if not progress[player] then return end
+        AdminPowers.respawn(player)
         applySpeed(player)
         applyTrail(player)
         teleport(player)
@@ -541,5 +560,5 @@ local function join(player)
     setStatus(player)
 end
 Players.PlayerAdded:Connect(join)
-Players.PlayerRemoving:Connect(function(player) progress[player] = nil; shopRequests[player] = nil end)
+Players.PlayerRemoving:Connect(function(player) AdminPowers.remove(player); progress[player] = nil; shopRequests[player] = nil end)
 for _, player in ipairs(Players:GetPlayers()) do join(player) end

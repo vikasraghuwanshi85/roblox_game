@@ -162,3 +162,87 @@ for _, config in ipairs(TrailCatalog) do
     player:GetAttributeChangedSignal("OwnsTrail_" .. config.Key):Connect(refreshTrails)
 end
 refreshTrails()
+
+-- These controls are visible to permitted roles. The server independently
+-- checks the sender's role for every toggle and flight input update.
+local adminRequest = shop:WaitForChild("AdminRequest")
+local Input = game:GetService("UserInputService")
+local ContextActions = game:GetService("ContextActionService")
+local RunService = game:GetService("RunService")
+local adminPanel = Instance.new("Frame")
+adminPanel.Name = "AdminPowers"
+adminPanel.BackgroundTransparency = 1
+adminPanel.Position = UDim2.fromOffset(16, 294)
+adminPanel.Size = UDim2.new(1, -32, 0, 44)
+adminPanel.Visible = false
+adminPanel.Parent = gui
+local adminButtons = {}
+for index, data in ipairs({{"ToggleGod", "God 99x"}, {"ToggleInfinite", "Infinite speed"}, {"ToggleFlight", "Fly"}}) do
+    local button = Instance.new("TextButton")
+    button.Name = data[1]
+    button.Size = UDim2.new(1 / 3, -8, 1, 0)
+    button.Position = UDim2.new((index - 1) / 3, 0, 0, 0)
+    button.BackgroundColor3 = Color3.fromRGB(105, 65, 150)
+    button.TextColor3, button.Font, button.TextSize = Color3.new(1, 1, 1), Enum.Font.GothamBold, 15
+    button.TextWrapped = true
+    button.Parent = adminPanel
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 10)
+    button.Activated:Connect(function() adminRequest:FireServer(data[1]) end)
+    adminButtons[data[1]] = button
+end
+local ascending, descending, bound, sentAt = false, false, false, 0
+local function vertical(name, state)
+    local held = state == Enum.UserInputState.Begin or state == Enum.UserInputState.Change
+    if name == "MazeFlyUp" then ascending = held else descending = held end
+    return Enum.ContextActionResult.Sink
+end
+local function refreshAdmin()
+    local allowed = player:GetAttribute("CanAdminPowers")
+    local flying = allowed and player:GetAttribute("AdminFlying")
+    adminPanel.Visible = allowed and true or false
+    adminButtons.ToggleGod.Text = "God 99x: " .. (player:GetAttribute("AdminGodActive") and "ON" or "OFF")
+    adminButtons.ToggleInfinite.Text = "Infinite speed: " .. (player:GetAttribute("AdminInfiniteActive") and "ON" or "OFF")
+    adminButtons.ToggleFlight.Text = "Fly: " .. (flying and "ON" or "OFF")
+    if flying and not bound then
+        bound = true
+        ContextActions:BindAction("MazeFlyUp", vertical, true, Enum.KeyCode.Space, Enum.KeyCode.Q)
+        ContextActions:BindAction("MazeFlyDown", vertical, true, Enum.KeyCode.LeftControl, Enum.KeyCode.E)
+        ContextActions:SetTitle("MazeFlyUp", "Up")
+        ContextActions:SetTitle("MazeFlyDown", "Down")
+        ContextActions:SetPosition("MazeFlyUp", UDim2.new(1, -200, 1, -220))
+        ContextActions:SetPosition("MazeFlyDown", UDim2.new(1, -130, 1, -220))
+    elseif not flying and bound then
+        ContextActions:UnbindAction("MazeFlyUp")
+        ContextActions:UnbindAction("MazeFlyDown")
+        ascending, descending, bound = false, false, false
+    end
+end
+for _, name in ipairs({"CanAdminPowers", "AdminGodActive", "AdminInfiniteActive", "AdminFlying"}) do
+    player:GetAttributeChangedSignal(name):Connect(refreshAdmin)
+end
+Input.WindowFocusReleased:Connect(function()
+    ascending, descending = false, false
+    if player:GetAttribute("AdminFlying") then adminRequest:FireServer("FlightInput", Vector3.new(0, 0, 0)) end
+end)
+RunService.RenderStepped:Connect(function()
+    if not player:GetAttribute("CanAdminPowers") or not player:GetAttribute("AdminFlying") then return end
+    local now = os.clock()
+    if now - sentAt < 0.08 then return end
+    sentAt = now
+    local direction = Vector3.new(0, 0, 0)
+    local camera = workspace.CurrentCamera
+    if camera and not Input:GetFocusedTextBox() then
+        if Input:IsKeyDown(Enum.KeyCode.W) then direction = direction + camera.CFrame.LookVector end
+        if Input:IsKeyDown(Enum.KeyCode.S) then direction = direction - camera.CFrame.LookVector end
+        if Input:IsKeyDown(Enum.KeyCode.D) then direction = direction + camera.CFrame.RightVector end
+        if Input:IsKeyDown(Enum.KeyCode.A) then direction = direction - camera.CFrame.RightVector end
+        if direction.Magnitude == 0 then
+            local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+            if humanoid then direction = humanoid.MoveDirection end
+        end
+        direction = direction + Vector3.new(0, (ascending and 1 or 0) - (descending and 1 or 0), 0)
+    end
+    if direction.Magnitude > 1 then direction = direction.Unit end
+    adminRequest:FireServer("FlightInput", direction)
+end)
+refreshAdmin()

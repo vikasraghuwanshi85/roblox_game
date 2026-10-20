@@ -20,7 +20,7 @@ No plugins or external services are required for manual setup.
 
 1. Open a new Baseplate place in Roblox Studio. Remove the default Baseplate and SpawnLocation.
 2. Create a Script named `MazeGame` in ServerScriptService and paste `src/server/init.server.lua` into it.
-3. Add ModuleScripts named `Levels`, `ShopConfig`, and `SilverShop` as children of MazeGame. Paste each matching file from `src/server/` into its ModuleScript.
+3. Add ModuleScripts named `Levels`, `ShopConfig`, `SilverShop`, `AdminConfig`, and `AdminPowers` as children of MazeGame. Paste each matching file from `src/server/` into its ModuleScript.
 4. Add a ModuleScript named `TrailCatalog` under ReplicatedStorage and paste `src/shared/TrailCatalog.lua` into it.
 5. Create a LocalScript named `MazeHUD` under StarterPlayer > StarterPlayerScripts and paste `src/client/init.client.lua` into it.
 6. Publish to a private test experience and enable Studio API access there to test saved rewards and shop ownership. Press Play, step on the Level 1 lobby pad, find its reward button, and step on it to return to the lobby and unlock Level 2. A successful profile load is required before entering stages.
@@ -51,6 +51,20 @@ Open **Trails** in the HUD to buy cosmetics with saved wins. Buying deducts wins
 | Red | 10,000 |
 
 The server owns reward amounts and prices and uses atomic DataStore writes for rewards, unlocks, and purchases. Wins and trail ownership share the existing shop profile so old Robux purchases are preserved. Reward entry records and purchase receipt records must be retained for retry deduplication.
+
+## Owner and admin powers
+
+Owners and configured admins get a private control strip with **God 99x**, **Infinite speed**, and **Fly** toggles. Using the God treadmill also enables a free 99x boost for those roles. The free boost is session state, never a paid entitlement, and does not change existing purchases. Other players keep the existing purchase flow.
+
+Set numeric Roblox User IDs in `src/server/AdminConfig.lua` under `OwnerUserIds` or `AdminUserIds`. Both numeric ID lists start empty. `AdminUsernames` contains `progamer2013988` and `raindeer_g6`; Roblox resolves these exact usernames to User IDs on the server. These names require live Roblox verification. A failed lookup grants no access. Display names and group IDs never grant powers. Prefer numeric User IDs when available. A personally owned experience detects its creator using Roblox's server-provided CreatorId. For group experiences, the server resolves the current group owner's User ID. Group members and officers receive no automatic powers. If that lookup fails, explicit owner IDs still work. Unpublished places and Studio test players with negative User IDs receive no automatic privileges; test in a published private experience with the real accounts.
+
+The UI follows replicated role attributes, while every action is authorized independently by the server. Requests only affect their sender; no client-provided target, multiplier, speed, role, or force is accepted. The numeric ID lists remain in ServerScriptService.
+
+**Infinite speed** uses a finite configurable WalkSpeed of **1,000,000,000 studs/sec**; literal mathematical infinity is not valid Roblox movement. Switching it off restores normal trained/purchased speed, including an enabled admin God boost. God and infinite toggles last for the current session and apply after respawn; leaving resets toggles. The role remains available on future joins.
+
+**Fly** uses server-created LinearVelocity and AlignOrientation constraints, with a movement cap of **100 studs/sec** from `FlySpeed`. On keyboard, use WASD in the camera direction, Space/Q to ascend, and Ctrl/E to descend. Mobile uses the movement joystick and Up/Down touch buttons. Toggle Fly off to land. Flight stops on death, respawn, leaving, or permission loss, and stale flight input produces a hover after 0.5 seconds. Flight constraints, network ownership, and character movement settings are cleaned up when flight ends.
+
+`tests/game_spec.lua` includes permission and integration checks for automatic owner detection, an explicit admin ID in a test-only config, forged role rejection, free God access without purchase or saved entitlement, infinite-speed toggles, bounded and invalid flight input, stale-input hover, respawn cleanup, revocation, and group owner lookup. Tests use deliberate fake lookup IDs; they do not establish that the configured usernames resolve to the intended real accounts. Verify both names in Studio or replace them with confirmed numeric IDs. Verify controls, mobile flight, and high-speed movement in Studio; the cloud tests mock services and do not simulate physics.
 
 ## Customize
 

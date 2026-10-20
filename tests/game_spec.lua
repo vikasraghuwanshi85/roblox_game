@@ -1,17 +1,24 @@
 -- A service-mocked server smoke test. It does not simulate Roblox physics.
 local function signal()
     local value = {callbacks = {}}
-    function value:Connect(callback) table.insert(self.callbacks, callback) end
-    function value:Fire(...) for _, callback in ipairs(self.callbacks) do callback(...) end end
+    function value:Connect(callback)
+        local item = {callback = callback, active = true}
+        table.insert(self.callbacks, item)
+        return {Disconnect = function() item.active = false end}
+    end
+    function value:Fire(...) for _, item in ipairs(self.callbacks) do if item.active then item.callback(...) end end end
     return value
 end
 local vector = {}
 vector.__index = function(v, key)
     if key == "Magnitude" then return math.sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z) end
+    if key == "Unit" then return Vector3.new(v.X / v.Magnitude, v.Y / v.Magnitude, v.Z / v.Magnitude) end
 end
 Vector3 = {new = function(x, y, z) return setmetatable({X = x, Y = y, Z = z}, vector) end}
 vector.__add = function(a, b) return Vector3.new(a.X + b.X, a.Y + b.Y, a.Z + b.Z) end
 vector.__sub = function(a, b) return Vector3.new(a.X - b.X, a.Y - b.Y, a.Z - b.Z) end
+vector.__mul = function(a, b) return Vector3.new(a.X * b, a.Y * b, a.Z * b) end
+typeof = function(value) return getmetatable(value) == vector and "Vector3" or type(value) end
 local frame = {}
 frame.__mul = function(a, b) return setmetatable({Position = a.Position + b.Position}, frame) end
 CFrame = {new = function(x, y, z)
@@ -21,12 +28,12 @@ Color3 = {fromRGB = function(...) return {...} end, new = function(...) return {
 ColorSequenceKeypoint = {new = function(...) return {...} end}
 ColorSequence = {new = function(value) return value end}
 UDim2 = {fromOffset = function(...) return {...} end, fromScale = function(...) return {...} end}
-local enums = {Material = {}, SurfaceType = {}, Font = {}, HumanoidHealthDisplayType = {}, HumanoidStateType = {}, InfoType = {}, ProductPurchaseDecision = {PurchaseGranted = "granted", NotProcessedYet = "retry"}}
+local enums = {CreatorType = {}, ActuatorRelativeTo = {}, OrientationAlignmentMode = {}, Material = {}, SurfaceType = {}, Font = {}, HumanoidHealthDisplayType = {}, HumanoidStateType = {}, InfoType = {}, ProductPurchaseDecision = {PurchaseGranted = "granted", NotProcessedYet = "retry"}}
 for _, values in pairs(enums) do setmetatable(values, {__index = function(_, key) return key end}) end
 Enum = enums
 Random = {new = function() return {NextInteger = function(_, minimum) return minimum end} end}
 local methods, instance = {}, {}
-local signals = {Touched = true, Triggered = true, OnServerEvent = true, HealthChanged = true, PlayerAdded = true, PlayerRemoving = true, CharacterAdded = true, PromptProductPurchaseFinished = true}
+local signals = {Touched = true, Triggered = true, OnServerEvent = true, HealthChanged = true, PlayerAdded = true, PlayerRemoving = true, CharacterAdded = true, PromptProductPurchaseFinished = true, Died = true}
 instance.__index = function(object, key)
     if methods[key] then return methods[key] end
     if key == "CFrame" then return CFrame.new(object.props.Position) end
@@ -60,7 +67,9 @@ function methods:FindFirstAncestorOfClass(class)
     while current do if current.ClassName == class then return current end; current = current.Parent end
 end
 function methods:Destroy() self.Parent = nil end
-function methods:SetNetworkOwner() end
+function methods:SetNetworkOwner(value) self.props.NetworkOwner = value end
+function methods:SetNetworkOwnershipAuto() self.props.NetworkAutomatic = true end
+function methods:ChangeState(value) self.props.HumanoidState = value end
 function methods:SetStateEnabled(key, enabled) self.attributes["state:" .. key] = enabled end
 function methods:MoveTo(position) self.props.LastMoveTo = position end
 function methods:PivotTo(cframe) self.HumanoidRootPart.Position = cframe.Position end
@@ -68,12 +77,18 @@ workspace = Instance.new("Workspace")
 local players, replicated = Instance.new("Players"), Instance.new("ReplicatedStorage")
 local users, profiles, failWrite = {}, {}, false
 players.GetPlayers = function() return users end
+players.GetUserIdFromNameAsync = function(_, name)
+    -- Deliberate test-only IDs; no real account IDs are asserted here.
+    local ids = {progamer2013988 = 321, raindeer_g6 = 654}
+    return assert(ids[name], "test lookup failed")
+end
 players.GetPlayerByUserId = function(_, id) for _, p in ipairs(users) do if p.UserId == id then return p end end end
 players.GetPlayerFromCharacter = function(_, character) for _, p in ipairs(users) do if p.Character == character then return p end end end
 local market = Instance.new("MarketplaceService")
 local prices = {[3720262741] = 15, [3720265337] = 30, [3720265626] = 50, [3720266025] = 60, [3720265823] = 20}
 market.GetProductInfo = function(_, id) return {PriceInRobux = prices[id]} end
-market.PromptProductPurchase = function() end
+local purchasePrompts = 0
+market.PromptProductPurchase = function() purchasePrompts = purchasePrompts + 1 end
 local store = {}
 function store:GetAsync(key) return profiles[key] end
 function store:UpdateAsync(key, callback)
@@ -82,13 +97,16 @@ function store:UpdateAsync(key, callback)
     return profiles[key]
 end
 local serial = 0
+local heartbeat = signal()
 local services = {
+    RunService = {Heartbeat = heartbeat},
+    GroupService = {GetGroupInfoAsync = function() return {Owner = {Id = 888}} end},
     Players = players, ReplicatedStorage = replicated, MarketplaceService = market,
     DataStoreService = {GetDataStore = function() return store end},
     HttpService = {GenerateGUID = function() serial = serial + 1; return "entry-" .. serial end},
     PathfindingService = {},
 }
-game = {GetService = function(_, name) return assert(services[name], name) end}
+game = {CreatorId = 999, CreatorType = Enum.CreatorType.User, GetService = function(_, name) return assert(services[name], name) end}
 task = {spawn = function(callback)
     local co = coroutine.create(callback)
     local ok, failure = coroutine.resume(co)
@@ -99,16 +117,21 @@ local catalogObject = Instance.new("ModuleScript")
 catalogObject.Name, catalogObject.Parent = "TrailCatalog", replicated
 local catalog = dofile("src/shared/TrailCatalog.lua")
 local levels, config = dofile("src/server/Levels.lua"), dofile("src/server/ShopConfig.lua")
-local shop
-script = {Levels = "levels", SilverShop = "shop", Parent = {ShopConfig = "config"}}
+local shop, admin
+local adminConfig = dofile("src/server/AdminConfig.lua")
+adminConfig.AdminUserIds = {123}
+script = {AdminPowers = "admin", Levels = "levels", SilverShop = "shop", Parent = {ShopConfig = "config", AdminConfig = "adminConfig"}}
 require = function(name)
     if name == catalogObject then return catalog end
     if name == "levels" then return levels end
     if name == "config" then return config end
     if name == "shop" then return shop end
+    if name == "admin" then return admin end
+    if name == "adminConfig" then return adminConfig end
     error("Unknown module")
 end
 shop = dofile("src/server/SilverShop.lua")
+admin = dofile("src/server/AdminPowers.lua")
 dofile("src/server/init.server.lua")
 local function character()
     local model, root, humanoid = Instance.new("Model"), Instance.new("Part"), Instance.new("Humanoid")
@@ -116,10 +139,10 @@ local function character()
     humanoid.Parent, model.Parent = model, workspace
     return model
 end
-local function join()
+local function join(id)
     local player = Instance.new("Player")
-    player.UserId, player.Parent, player.Character = 42, players, character()
-    users[1] = player
+    player.UserId, player.Parent, player.Character = id or 42, players, character()
+    if id then table.insert(users, player) else users[1] = player end
     players.PlayerAdded:Fire(player)
     return player
 end
@@ -176,3 +199,67 @@ for stage = 2, #levels do
     assert(not boss.HumanoidRootPart:FindFirstChildOfClass("ProximityPrompt"))
 end
 print("PASS server lobby, seven reward buttons, save failure/retry, duplicate touches, trail purchase, respawn, rejoin, skip, and immortal boss setup (mocked services)")
+
+-- Role and movement checks run against the actual server module and event wiring.
+local request = replicated.MazeShop.AdminRequest
+local originalClock, now = os.clock, 100
+os.clock = function() return now end
+local before = rejoined.Character.Humanoid.WalkSpeed
+rejoined:SetAttribute("CanAdminPowers", true)
+rejoined:SetAttribute("AdminInfiniteActive", true)
+request.OnServerEvent:Fire(rejoined, "ToggleInfinite")
+request.OnServerEvent:Fire(rejoined, "ToggleFlight")
+assert(rejoined.Character.Humanoid.WalkSpeed == before)
+assert(not rejoined.Character.HumanoidRootPart.AdminFlightVelocity)
+assert(not admin.enableGod(rejoined), "forged attributes cannot grant admin powers")
+local owner = join(999)
+assert(owner:GetAttribute("AdminRole") == "Owner" and owner:GetAttribute("CanAdminPowers"))
+local belt = lobby.GodTreadmill.Belt
+owner.Character:PivotTo(CFrame.new(belt.Position + Vector3.new(0, 3, 0)))
+local promptsBefore = purchasePrompts
+belt.ProximityPrompt.Triggered:Fire(owner)
+assert(owner:GetAttribute("AdminGodActive") and owner.Character.Humanoid.WalkSpeed == 16 * 99)
+assert(purchasePrompts == promptsBefore and not (profiles["999"] and profiles["999"].God))
+request.OnServerEvent:Fire(owner, "ToggleInfinite")
+assert(owner.Character.Humanoid.WalkSpeed == adminConfig.InfiniteWalkSpeed)
+now = now + 1
+request.OnServerEvent:Fire(owner, "ToggleFlight")
+assert(owner:GetAttribute("AdminFlying") and owner.Character.HumanoidRootPart.AdminFlightVelocity)
+now = now + 0.1
+request.OnServerEvent:Fire(owner, "FlightInput", Vector3.new(100, 0, 0))
+heartbeat:Fire()
+assert(owner.Character.HumanoidRootPart.AdminFlightVelocity.VectorVelocity.Magnitude == adminConfig.FlySpeed)
+now = now + 0.1
+request.OnServerEvent:Fire(owner, "FlightInput", Vector3.new(0 / 0, 0, 0))
+heartbeat:Fire()
+assert(owner.Character.HumanoidRootPart.AdminFlightVelocity.VectorVelocity.Magnitude == adminConfig.FlySpeed)
+now = now + 1
+heartbeat:Fire()
+assert(owner.Character.HumanoidRootPart.AdminFlightVelocity.VectorVelocity.Magnitude == 0, "stale input must hover")
+local oldRoot = owner.Character.HumanoidRootPart
+owner.Character = character(); owner.CharacterAdded:Fire(owner.Character)
+assert(not owner:GetAttribute("AdminFlying") and not oldRoot.AdminFlightVelocity)
+assert(oldRoot.props.NetworkAutomatic and owner.Character.Humanoid.WalkSpeed == adminConfig.InfiniteWalkSpeed)
+now = now + 1
+request.OnServerEvent:Fire(owner, "ToggleInfinite")
+assert(owner.Character.Humanoid.WalkSpeed == 16 * 99)
+local permitted = join(123)
+assert(permitted:GetAttribute("AdminRole") == "Admin")
+assert(admin.enableGod(permitted) and permitted.Character.Humanoid.WalkSpeed == 16 * 99)
+assert(not admin.handle(permitted, "BecomeOwner"))
+request.OnServerEvent:Fire(permitted, "ToggleFlight")
+assert(permitted:GetAttribute("AdminFlying"))
+adminConfig.AdminUserIds = {}
+heartbeat:Fire()
+assert(not permitted:GetAttribute("AdminFlying") and not permitted:GetAttribute("CanAdminPowers"))
+assert(permitted.Character.Humanoid.WalkSpeed == 16, "revocation must remove free God and infinite movement")
+-- Group ownership is looked up by the server; the group ID is never a User ID.
+game.CreatorType, game.CreatorId = Enum.CreatorType.Group, 900
+admin.start(function() end)
+assert(admin.role({UserId = 888}) == "Owner")
+assert(admin.role({UserId = 900}) == "Player")
+assert(admin.role({UserId = -1}) == "Player")
+assert(admin.role({UserId = 321}) == "Admin" and admin.role({UserId = 654}) == "Admin")
+assert(admin.role({UserId = 987, Name = "progamer2013988", DisplayName = "raindeer_g6"}) == "Player", "names never bypass ID authorization")
+os.clock = originalClock
+print("PASS admin/owner roles, forged-role rejection, free God access, finite infinite mode, bounded flight, invalid/stale input, respawn cleanup, revocation, and group owner resolution (mocked services)")
