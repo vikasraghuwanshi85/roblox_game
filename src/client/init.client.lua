@@ -16,7 +16,10 @@ label.TextWrapped = true
 label.Parent = gui
 Instance.new("UICorner", label).CornerRadius = UDim.new(0, 12)
 local function refresh()
-    label.Text = player:GetAttribute("MazeStatus") or "Loading maze…"
+    local status = player:GetAttribute("MazeStatus") or "Loading maze…"
+    local speed = player:GetAttribute("TrainingSpeed") or 16
+    label.Text = status .. "\nSpeed: " .. speed .. " studs/sec — hold E at a treadmill to train (+16, max 640)."
 end
 player:GetAttributeChangedSignal("MazeStatus"):Connect(refresh)
+player:GetAttributeChangedSignal("TrainingSpeed"):Connect(refresh)
 refresh()

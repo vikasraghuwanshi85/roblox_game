@@ -2,6 +2,7 @@ local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
 local Levels = require(script.Levels)
 local CELL, HEIGHT = 16, 14
+local BASE_SPEED, SPEED_GAIN, MAX_SPEED, TRAIN_SECONDS = 16, 16, 640, 2
 local world = Instance.new("Folder")
 world.Name = "MazeQuest"
 world.Parent = workspace
@@ -55,6 +56,7 @@ end
 local function setStatus(player)
     local state = progress[player]
     if not state then return end
+    player:SetAttribute("TrainingSpeed", state.speed)
     if state.won then
         player:SetAttribute("MazeStatus", "Victory! You escaped every maze. Rejoin to play again.")
     else
@@ -89,6 +91,35 @@ for index, level in ipairs(Levels) do
     wall(pos(1, (size + 1) / 2, HEIGHT / 2) - Vector3.new(CELL / 2, 0, 0), Vector3.new(1, HEIGHT, size * CELL))
     wall(pos((size + 1) / 2, 1, HEIGHT / 2) - Vector3.new(0, 0, CELL / 2), Vector3.new(size * CELL, HEIGHT, 1))
     maps[index] = {spawn = pos(1, 1, 4)}
+    local treadmill = Instance.new("Model")
+    treadmill.Name = "SpeedTrainingTreadmill"
+    treadmill.Parent = folder
+    local belt = part(treadmill, "Belt", Vector3.new(5, 0.5, 7), pos(1, 1, 0.25) + Vector3.new(3, 0, 0), Color3.fromRGB(25, 30, 40))
+    for _, x in ipairs({-2.7, 2.7}) do
+        part(treadmill, "Rail", Vector3.new(0.4, 2, 7), belt.Position + Vector3.new(x, 1, 0), Color3.fromRGB(100, 190, 240))
+    end
+    part(treadmill, "Console", Vector3.new(5, 1, 0.6), belt.Position + Vector3.new(0, 2, -3.2), Color3.fromRGB(100, 190, 240))
+    local train = Instance.new("ProximityPrompt")
+    train.ActionText = "Train: +16 speed (max 640)"
+    train.ObjectText = "Speed Treadmill"
+    train.HoldDuration = TRAIN_SECONDS
+    train.MaxActivationDistance = 8
+    train.RequiresLineOfSight = false
+    train.Parent = belt
+    train.Triggered:Connect(function(player)
+        local state = progress[player]
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local now = os.clock()
+        if not state or state.level ~= index or state.won or not root or not humanoid or humanoid.Health <= 0 then return end
+        if (root.Position - belt.Position).Magnitude > 10 or state.speed >= MAX_SPEED then return end
+        if now - state.lastTraining < TRAIN_SECONDS then return end
+        state.lastTraining = now
+        state.speed = math.min(MAX_SPEED, state.speed + SPEED_GAIN)
+        humanoid.WalkSpeed = state.speed
+        setStatus(player)
+    end)
     local exit = part(folder, "Exit", Vector3.new(9, 1, 9), pos(size, size, 0.5), Color3.fromRGB(60, 255, 130))
     exit.Material = Enum.Material.Neon
     exit.Touched:Connect(function(hit)
@@ -276,13 +307,20 @@ for index, level in ipairs(Levels) do
 end
 
 local function join(player)
-    progress[player] = {level = 1, hits = 0, bossDefeated = false}
+    progress[player] = {level = 1, hits = 0, bossDefeated = false, speed = BASE_SPEED, lastTraining = os.clock()}
     player.CharacterAdded:Connect(function(character)
         character:WaitForChild("HumanoidRootPart")
+        local humanoid = character:WaitForChild("Humanoid")
+        if not progress[player] then return end
+        humanoid.WalkSpeed = progress[player].speed
         teleport(player)
         setStatus(player)
     end)
-    if player.Character then teleport(player) end
+    if player.Character then
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.WalkSpeed = progress[player].speed end
+        teleport(player)
+    end
     setStatus(player)
 end
 Players.PlayerAdded:Connect(join)

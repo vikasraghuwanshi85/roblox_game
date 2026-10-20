@@ -9,6 +9,7 @@ A Roblox maze adventure with seven deterministic, fully connected mazes.
 - Level 5: Randy's Red Maze. Red walls and Randy the Rat, with a configured speed of **150 studs per second**. Defeat Randy with three strikes and reach the exit to enter Level 6.
 - Level 6: Leo's Golden Maze. Yellow walls and Leo the Lion, with a configured speed of **320 studs per second**. Defeat Leo with three strikes and reach the exit to enter Level 7.
 - Level 7: Han's Horse Maze. Han the Horse has a configured speed of **600 studs per second**. Walls use the default brown color. Defeat Han with three strikes and reach the exit to win.
+- Speed training: a treadmill at every entrance adds **16 studs/sec** per two-second interaction, starting at 16 and capped at 640. Hold E nearby (or use the touch/gamepad prompt). Upgrades survive death and level changes during the session; leaving resets speed. The HUD shows your current speed.
 - Progress is independent for each player. Death returns you to your current level's entrance; leaving resets progress. Boss completion is per player.
 
 Level 1 has no boss. Level 2 features Bruno the Bear with a configured WalkSpeed of 29 studs per second; walls and turns can reduce actual travel speed.
@@ -32,3 +33,7 @@ Edit `src/server/Levels.lua` to change maze names, sizes, deterministic random s
 ## Validation
 
 Source syntax and project JSON can be checked outside Studio. Actual movement, touch-based exits, multiplayer sessions, prompt timing, and guardian damage require Roblox Studio playtesting. Roblox Studio is not available in the Linux cloud environment, so gameplay has not yet been verified there.
+
+### Treadmill playtest
+
+In Studio, train at the first entrance and verify speed rises from 16 to 32. Repeat training, die, and advance a level to confirm upgrades remain. With two clients, confirm training affects only its user. Check that dead or distant players cannot train and that speed stops at 640. These gameplay checks require Studio and have not been run in the cloud.
