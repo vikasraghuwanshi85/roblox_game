@@ -1,0 +1,8 @@
+{
+  "name": "MazeQuest",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {"MazeGame": {"$path": "src/server"}},
+    "StarterPlayer": {"StarterPlayerScripts": {"MazeHUD": {"$path": "src/client"}}}
+  }
+}
