@@ -1,6 +1,7 @@
 local PathfindingService = game:GetService("PathfindingService")
 local Players = game:GetService("Players")
 local Levels = require(script.Levels)
+local SilverShop = require(script.SilverShop)
 local CELL, HEIGHT = 16, 14
 local BASE_SPEED, SPEED_GAIN, MAX_SPEED, TRAIN_SECONDS = 16, 16, 640, 2
 local world = Instance.new("Folder")
@@ -53,10 +54,19 @@ local function carve(size, seed)
     return cells
 end
 
+local function applySpeed(player)
+    local state = progress[player]
+    if not state then return end
+    local speed = state.speed * SilverShop.multiplier(player)
+    player:SetAttribute("TrainingSpeed", speed)
+    local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then humanoid.WalkSpeed = speed end
+end
+
 local function setStatus(player)
     local state = progress[player]
     if not state then return end
-    player:SetAttribute("TrainingSpeed", state.speed)
+    applySpeed(player)
     if state.won then
         player:SetAttribute("MazeStatus", "Victory! You escaped every maze. Rejoin to play again.")
     else
@@ -117,8 +127,32 @@ for index, level in ipairs(Levels) do
         if now - state.lastTraining < TRAIN_SECONDS then return end
         state.lastTraining = now
         state.speed = math.min(MAX_SPEED, state.speed + SPEED_GAIN)
-        humanoid.WalkSpeed = state.speed
+        applySpeed(player)
         setStatus(player)
+    end)
+    local silver = Instance.new("Model")
+    silver.Name = "SilverTreadmill"
+    silver.Parent = folder
+    local silverBelt = part(silver, "SilverBelt", Vector3.new(5, 0.5, 7), pos(1, 1, 0.25) + Vector3.new(-3, 0, 0), Color3.fromRGB(190, 195, 205))
+    silverBelt.Material = Enum.Material.Metal
+    for _, x in ipairs({-2.7, 2.7}) do
+        part(silver, "SilverRail", Vector3.new(0.4, 2, 7), silverBelt.Position + Vector3.new(x, 1, 0), Color3.fromRGB(220, 225, 235)).Material = Enum.Material.Metal
+    end
+    local buy = Instance.new("ProximityPrompt")
+    buy.ActionText = "Unlock 2.5x speed — 15 Robux"
+    buy.ObjectText = "Silver Treadmill (permanent, non-stacking)"
+    buy.HoldDuration = 1
+    buy.MaxActivationDistance = 8
+    buy.RequiresLineOfSight = false
+    buy.Parent = silverBelt
+    buy.Triggered:Connect(function(player)
+        local state = progress[player]
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not state or state.level ~= index or not root or not humanoid or humanoid.Health <= 0 then return end
+        if (root.Position - silverBelt.Position).Magnitude > 10 then return end
+        SilverShop.prompt(player)
     end)
     local exit = part(folder, "Exit", Vector3.new(9, 1, 9), pos(size, size, 0.5), Color3.fromRGB(60, 255, 130))
     exit.Material = Enum.Material.Neon
@@ -306,19 +340,27 @@ for index, level in ipairs(Levels) do
     end
 end
 
+SilverShop.start(function(player)
+    if player:GetAttribute("SilverTreadmillOwned") then
+        player:SetAttribute("ShopMessage", "Silver treadmill unlocked! Permanent 2.5x speed is active.")
+    end
+    applySpeed(player)
+end)
+
 local function join(player)
     progress[player] = {level = 1, hits = 0, bossDefeated = false, speed = BASE_SPEED, lastTraining = os.clock()}
+    SilverShop.load(player)
     player.CharacterAdded:Connect(function(character)
         character:WaitForChild("HumanoidRootPart")
         local humanoid = character:WaitForChild("Humanoid")
         if not progress[player] then return end
-        humanoid.WalkSpeed = progress[player].speed
+        applySpeed(player)
         teleport(player)
         setStatus(player)
     end)
     if player.Character then
         local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-        if humanoid then humanoid.WalkSpeed = progress[player].speed end
+        if humanoid then applySpeed(player) end
         teleport(player)
     end
     setStatus(player)

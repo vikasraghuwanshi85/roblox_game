@@ -20,7 +20,7 @@ No plugins or external services are required for manual setup.
 
 1. Open a new Baseplate place in Roblox Studio. Remove the default Baseplate and SpawnLocation.
 2. Create a Script named `MazeGame` in ServerScriptService and paste `src/server/init.server.lua` into it.
-3. Add a ModuleScript named `Levels` as a child of MazeGame and paste `src/server/Levels.lua` into it.
+3. Add ModuleScripts named `Levels`, `ShopConfig`, and `SilverShop` as children of MazeGame. Paste each matching file from `src/server/` into its ModuleScript.
 4. Create a LocalScript named `MazeHUD` under StarterPlayer > StarterPlayerScripts and paste `src/client/init.client.lua` into it.
 5. Press Play. Walk through the maze using normal Roblox movement. The green exit advances your level; complete the final maze to win.
 
@@ -37,3 +37,13 @@ Source syntax and project JSON can be checked outside Studio. Actual movement, t
 ### Treadmill playtest
 
 In Studio, train at the first entrance and verify speed rises from 16 to 32. Repeat training, die, and advance a level to confirm upgrades remain. With two clients, confirm training affects only its user. Check that dead or distant players cannot train and that speed stops at 640. These gameplay checks require Studio and have not been run in the cloud.
+
+## Silver treadmill purchase setup
+
+Each entrance also has a silver treadmill. Its one-time unlock permanently multiplies player speed by 2.5, including later training gains (maximum effective speed 1600). The multiplier does not stack. Base training speed still resets when leaving; the purchased multiplier is saved across sessions.
+
+Create a Developer Product for this experience in Roblox Creator Dashboard, set its price to **15 Robux**, and place its numeric Product ID in `src/server/ShopConfig.lua`. The default ID of 0 disables purchases. Roblox controls the actual checkout price; this game enables prompts only after checking the configured price. Keep the product price fixed at 15 Robux. If using regional pricing or price optimization, disable those for this fixed-price product.
+
+Publish the experience before testing purchases. Use an isolated test experience and Studio's supported purchase testing; enable Studio API access only for that test experience to test DataStore persistence. Verify successful payment grants one multiplier, cancellation grants none, rejoining restores ownership, and receipt retries do not stack boosts. Failed ownership reads block purchase prompts. Failed receipt writes defer acknowledgment so Roblox can retry. Do not replace `ProcessReceipt` with another handler; integrate future products into `SilverShop`.
+
+Purchase and DataStore behavior have not been verified in Roblox Studio. A real Product ID is still required before the silver treadmill can sell the boost.
